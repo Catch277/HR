@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../widgets/stat_card_employee.dart';
 import '../widgets/dropdown_filter_employee.dart';
+import '../widgets/bottom_nav_bar.dart';
+import 'work_schedule_employee.dart'; // Import màn hình Lịch làm việc
+import '../routes/app_routers.dart'; // Import AppRoutes
 
 class HomeEmployeeScreen extends StatefulWidget {
   const HomeEmployeeScreen({super.key});
@@ -35,7 +38,7 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  height: 240,
+                  height: 210,
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 50, 20, 0),
                   decoration: const BoxDecoration(
@@ -167,7 +170,7 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
 
             const SizedBox(height: 40),
 
-            // 2. KHỐI NỘI DUNG CHÍNH (TỔNG QUAN THÁNG)
+            // 2. KHỐI NỘI DUNG CHÍNH
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -178,32 +181,11 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Filter Bộ lọc (Gọi từ Widget)
-                    const Row(
-                      children: [
-                        Expanded(
-                          child: DropdownFilterEmployee(
-                            icon: Icons.store,
-                            title: 'Tất cả chi nhánh',
-                          ),
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: DropdownFilterEmployee(
-                            icon: Icons.calendar_today,
-                            title: 'Hôm nay',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Tiêu đề
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Tổng quan tháng',
+                          'Tiện ích',
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                         GestureDetector(
@@ -219,7 +201,7 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Grid ô thống kê (Gọi từ StatCard Widget)
+                    // Grid ô tiện ích
                     GridView.count(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -227,20 +209,36 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                       childAspectRatio: 2.5,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
-                      children: const [
-                        StatCardEmployee(count: '0', label: 'Đi muộn'),
-                        StatCardEmployee(count: '0', label: 'Về sớm'),
-                        StatCardEmployee(count: '0', label: 'Quên check-in'),
-                        StatCardEmployee(count: '0', label: 'Quên check-out'),
-                        StatCardEmployee(count: '0', label: 'Nghỉ phép'),
-                        StatCardEmployee(count: '0', label: 'Nghỉ không phép'),
+                      children: [
+                        // Chuyển trang khi nhấn Lịch làm việc
+                        StatCardEmployee(
+                          icon: Icons.calendar_today_outlined,
+                          label: 'Lịch làm việc',
+                          onTap: () {
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.work_schedule_employee,
+                            );
+                          },
+                        ),
+                        StatCardEmployee(
+                          icon: Icons.attach_money_outlined,
+                          label: 'Phiếu lương',
+                          onTap: () {},
+                        ),
+                        StatCardEmployee(
+                          icon: Icons.table_chart_outlined,
+                          label: 'Bảng công',
+                          onTap: () {},
+                        ),
+                        StatCardEmployee(
+                          icon: Icons.newspaper_outlined,
+                          label: 'Bản tin',
+                          onTap: () {},
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
-
-                    const StatCardEmployee(count: '0', label: 'Tổng số giờ công trong tháng'),
-                    const SizedBox(height: 10),
-                    const StatCardEmployee(count: '0', label: 'Tổng lương trong tháng'),
                   ],
                 ),
               ),
@@ -252,24 +250,13 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
       ),
 
       // 3. BOTTOM NAVIGATION BAR
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: BottomNavBar(
         currentIndex: _selectedIndex,
-        selectedItemColor: const Color(0xFF3860F4),
-        unselectedItemColor: Colors.grey,
-        selectedFontSize: 14,
-        unselectedFontSize: 13,
-        type: BottomNavigationBarType.fixed,
         onTap: (index) {
           setState(() {
             _selectedIndex = index;
           });
         },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined, size: 26), label: 'Trang chủ'),
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded, size: 26), label: 'Công việc'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline, size: 26), label: 'Tin nhắn'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline, size: 26), label: 'Tài khoản'),
-        ],
       ),
     );
   }
