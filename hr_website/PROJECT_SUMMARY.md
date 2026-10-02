@@ -90,6 +90,25 @@ Before using the revenue API, run [SCRUM-39_daily_revenue.sql](supabase/sql/SCRU
 
 Then run [SCRUM-40_update_revenue.sql](supabase/sql/SCRUM-40_update_revenue.sql) to add the closing-revenue fields, `audit_log`, and the Row Level Security policy required for updates.
 
+### Review requests (SCRUM-41)
+
+- `GET /api/requests?branch_id=<uuid>&request_type=<type>&status=<status>` returns requests matching any supplied filters.
+- `PATCH /api/requests/<request-id>/review` accepts `APPROVED` or `REJECTED`; rejecting requires `reject_reason`.
+
+The reviewing account is derived from the Supabase session. Only `OWNER` and `CHU` roles from the `users` table can review; every review records the authenticated user as `approver_id` and updates `updated_at`.
+
+### Revenue reports (SCRUM-44)
+
+`GET /api/revenue/report?branch_id=<uuid>&period=month&date=2026-09-29` returns closed-shift revenue (`close_amount - open_amount`) for a day, week, month, quarter, or year. It includes time-series points, totals, and a comparison with the preceding equivalent period.
+
+Run [SCRUM-44_revenue_report.sql](supabase/sql/SCRUM-44_revenue_report.sql) to create the PostgreSQL aggregation RPC used by the report repository.
+
+### Quick search (SCRUM-49)
+
+`GET /api/search?q=<keyword>&type=<all|users|requests|shifts>` returns up to 10 results per requested group. It requires a Supabase session and a user profile with a role; each query runs through the current session so Supabase RLS determines the returned data scope.
+
+Run [SCRUM-49_quick_search_indexes.sql](supabase/sql/SCRUM-49_quick_search_indexes.sql) to add `pg_trgm` indexes for fast `ILIKE` search. The script assumes `shifts.name` is the shift display-name column.
+
 ## Useful commands
 
 ```bash

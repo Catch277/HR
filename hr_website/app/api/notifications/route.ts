@@ -1,0 +1,96 @@
+/**
+ * @swagger
+ * /api/notifications:
+ *   get:
+ *     summary: Get notifications for the authenticated user
+ *     description: Returns a paginated list of notifications for the current user, sorted newest first.
+ *     tags:
+ *       - Notifications
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number (1-indexed).
+ *       - in: query
+ *         name: page_size
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of items per page.
+ *     responses:
+ *       200:
+ *         description: A paginated list of notifications.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedNotifications'
+ *       401:
+ *         description: Authentication is required.
+ *       500:
+ *         description: An unexpected server error occurred.
+ */
+import { type NextRequest, NextResponse } from "next/server";
+
+import { SupabaseNotificationRepository } from "@/lib/infrastructure/repositories/SupabaseNotificationRepository";
+import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
+import { GetUserNotificationsUseCase } from "@/lib/usecases/GetUserNotificationsUseCase";
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Authentication is required." },
+        { status: 401 },
+      );
+    }
+
+    const pageParam = request.nextUrl.searchParams.get("page");
+    const pageSizeParam = request.nextUrl.searchParams.get("page_size");
+
+    const page = pageParam ? parseInt(pageParam, 10) : DEFAULT_PAGE;
+    const pageSize = pageSizeParam
+      ? parseInt(pageSizeParam, 10)
+      : DEFAULT_PAGE_SIZE;
+
+    if (isNaN(page) || page < 1 || isNaN(pageSize) || pageSize < 1) {
+      return NextResponse.json(
+        { error: "page and page_size must be positive integers." },
+        { status: 400 },
+      );
+    }
+
+    const clampedPageSize = Math.min(pageSize, MAX_PAGE_SIZE);
+
+    const getNotifications = new GetUserNotificationsUseCase(
+      new SupabaseNotificationRepository(),
+    );
+    const result = await getNotifications.execute(
+      user.id,
+      page,
+      clampedPageSize,
+    );
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("Failed to get notifications", error);
+    return NextResponse.json(
+      { error: "Unable to retrieve notifications." },
+      { status: 500 },
+    );
+  }
+}
