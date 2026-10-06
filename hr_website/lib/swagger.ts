@@ -1,9 +1,8 @@
 import { createSwaggerSpec } from "next-swagger-doc";
-import path from "path";
 
 export function getApiDocs() {
   return createSwaggerSpec({
-    apiFolder: path.join(process.cwd(), "app/api"),
+    apiFolder: "app/api",
     definition: {
       openapi: "3.0.0",
       info: {
@@ -353,5 +352,6 @@ export function getApiDocs() {
         },
       },
     },
+    failOnErrors: true,
   });
 }

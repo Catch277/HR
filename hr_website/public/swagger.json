@@ -1,0 +1,1277 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "HR Website API",
+    "version": "1.0.0",
+    "description": "API documentation for the HR Website backend."
+  },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "RevenueRecord": {
+        "type": "object",
+        "required": [
+          "id",
+          "branch_id",
+          "open_amount",
+          "created_at",
+          "created_by",
+          "close_amount",
+          "close_note",
+          "close_image_url",
+          "closed_by",
+          "closed_at",
+          "audit_log"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "open_amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "close_amount": {
+            "type": "number",
+            "minimum": 0,
+            "nullable": true
+          },
+          "close_note": {
+            "type": "string",
+            "nullable": true
+          },
+          "close_image_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "closed_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "audit_log": {
+            "type": "array",
+            "items": {}
+          }
+        }
+      },
+      "RequestEntity": {
+        "type": "object",
+        "required": [
+          "id",
+          "branch_id",
+          "request_type",
+          "status",
+          "reject_reason",
+          "approver_id",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reject_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "approver_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RevenueReport": {
+        "type": "object",
+        "required": [
+          "period",
+          "date",
+          "range",
+          "summary",
+          "comparison",
+          "series"
+        ],
+        "properties": {
+          "period": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "quarter",
+              "year"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "range": {
+            "type": "object",
+            "required": [
+              "start_at",
+              "end_at"
+            ],
+            "properties": {
+              "start_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "end_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RevenueReportSummary"
+          },
+          "comparison": {
+            "type": "object",
+            "required": [
+              "previous_total_revenue_amount",
+              "difference",
+              "percentage_change"
+            ],
+            "properties": {
+              "previous_total_revenue_amount": {
+                "type": "number"
+              },
+              "difference": {
+                "type": "number"
+              },
+              "percentage_change": {
+                "type": "number",
+                "nullable": true
+              }
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevenueReportPoint"
+            }
+          }
+        }
+      },
+      "RevenueReportSummary": {
+        "type": "object",
+        "required": [
+          "total_open_amount",
+          "total_close_amount",
+          "total_revenue_amount",
+          "record_count"
+        ],
+        "properties": {
+          "total_open_amount": {
+            "type": "number"
+          },
+          "total_close_amount": {
+            "type": "number"
+          },
+          "total_revenue_amount": {
+            "type": "number"
+          },
+          "record_count": {
+            "type": "integer"
+          }
+        }
+      },
+      "RevenueReportPoint": {
+        "type": "object",
+        "required": [
+          "bucket_start",
+          "total_open_amount",
+          "total_close_amount",
+          "total_revenue_amount",
+          "record_count"
+        ],
+        "properties": {
+          "bucket_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "total_open_amount": {
+            "type": "number"
+          },
+          "total_close_amount": {
+            "type": "number"
+          },
+          "total_revenue_amount": {
+            "type": "number"
+          },
+          "record_count": {
+            "type": "integer"
+          }
+        }
+      },
+      "QuickSearchResult": {
+        "type": "object",
+        "required": [
+          "query",
+          "type",
+          "total",
+          "users",
+          "requests",
+          "shifts"
+        ],
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "all",
+              "users",
+              "requests",
+              "shifts"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuickSearchUser"
+            }
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuickSearchRequest"
+            }
+          },
+          "shifts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuickSearchShift"
+            }
+          }
+        }
+      },
+      "QuickSearchUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "QuickSearchRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "branch_id",
+          "request_type",
+          "status",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "QuickSearchShift": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "branch_id",
+          "start_time",
+          "end_time"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "start_time": {
+            "type": "string",
+            "nullable": true
+          },
+          "end_time": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "title",
+          "body",
+          "type",
+          "is_read",
+          "related_entity_type",
+          "related_entity_id",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Notification type (e.g. request_approved, shift_changed)."
+          },
+          "is_read": {
+            "type": "boolean"
+          },
+          "related_entity_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "related_entity_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaginatedNotifications": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total number of notifications."
+          },
+          "page": {
+            "type": "integer",
+            "description": "Current page number."
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "Number of items per page."
+          }
+        }
+      },
+      "NotificationSetting": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "channel",
+          "enabled",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel": {
+            "type": "string",
+            "description": "Notification channel (e.g. email, push, in_app)."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ChatAskRequest": {
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Câu hỏi của nhân viên về chính sách, quy định hoặc hợp đồng.",
+            "example": "Chính sách nghỉ phép năm của công ty là bao nhiêu ngày?"
+          }
+        }
+      },
+      "DocumentChunk": {
+        "type": "object",
+        "required": [
+          "content",
+          "source",
+          "similarity"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Nội dung đoạn tài liệu được tìm thấy."
+          },
+          "source": {
+            "type": "string",
+            "description": "Tên / tiêu đề tài liệu nguồn (dùng để trích dẫn)."
+          },
+          "similarity": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Điểm tương đồng cosine với câu hỏi [0, 1]."
+          }
+        }
+      },
+      "ChatAskResponse": {
+        "type": "object",
+        "required": [
+          "answer",
+          "sources"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string",
+            "description": "Câu trả lời được sinh bởi Gemini dựa trên ngữ cảnh tài liệu.",
+            "example": "Theo [Nguồn 1: Nội quy công ty], nhân viên được nghỉ phép 12 ngày mỗi năm."
+          },
+          "sources": {
+            "type": "array",
+            "description": "Danh sách các đoạn tài liệu được dùng làm ngữ cảnh, sắp xếp theo độ tương đồng giảm dần.",
+            "items": {
+              "$ref": "#/components/schemas/DocumentChunk"
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Mô tả lỗi.",
+            "example": "Trường `question` là bắt buộc và phải là chuỗi không rỗng."
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/users": {
+      "get": {
+        "summary": "Get a user by ID",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The user's UUID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id query parameter is missing."
+          },
+          "404": {
+            "description": "No user exists with the supplied ID."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Search users, requests, and shifts",
+        "description": "Searches only data accessible to the authenticated user under the active Supabase RLS policies.",
+        "tags": [
+          "Search"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2
+            },
+            "description": "Keyword to search for."
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "users",
+                "requests",
+                "shifts"
+              ],
+              "default": "all"
+            },
+            "description": "Limits the result to one resource type."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grouped quick-search results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuickSearchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The search query or type is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The authenticated account has no eligible user profile."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/revenue/report": {
+      "get": {
+        "summary": "Get an aggregated revenue report",
+        "description": "Reports closed-shift revenue (close_amount minus open_amount) in the Asia/Bangkok business timezone and compares it with the preceding equivalent period.",
+        "tags": [
+          "Revenue"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Limits the report to one branch. Omit for all accessible branches."
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "default": "day"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-09-29"
+            },
+            "description": "A date within the requested business period; defaults to today in Asia/Bangkok."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The aggregated report and period-over-period comparison.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "One or more query parameters are invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/revenue/open": {
+      "post": {
+        "summary": "Declare opening revenue for a branch",
+        "description": "Creates one opening-revenue declaration per branch for the current business day (Asia/Bangkok).",
+        "tags": [
+          "Revenue"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "branch_id",
+                  "open_amount"
+                ],
+                "properties": {
+                  "branch_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The branch UUID."
+                  },
+                  "open_amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "example": 1500000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Opening revenue was declared successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "409": {
+            "description": "Opening revenue was already declared for this branch today."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/revenue/close": {
+      "put": {
+        "summary": "Declare closing revenue for a branch",
+        "description": "Closes the current business day's opening-revenue record for a branch (Asia/Bangkok).",
+        "tags": [
+          "Revenue"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "branch_id",
+                  "close_amount"
+                ],
+                "properties": {
+                  "branch_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The branch UUID."
+                  },
+                  "close_amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "example": 2200000
+                  },
+                  "close_note": {
+                    "type": "string",
+                    "nullable": true,
+                    "example": "Cash counted and reconciled at shift end."
+                  },
+                  "close_image_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "nullable": true,
+                    "example": "https://example.supabase.co/storage/v1/object/public/revenue/close.jpg"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Closing revenue was declared successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revenue",
+                    "revenue_difference"
+                  ],
+                  "properties": {
+                    "revenue": {
+                      "$ref": "#/components/schemas/RevenueRecord"
+                    },
+                    "revenue_difference": {
+                      "type": "number",
+                      "description": "close_amount minus open_amount; UI can use this for warnings."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "404": {
+            "description": "No opening-revenue declaration exists for this branch today."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/requests": {
+      "get": {
+        "summary": "Get requests with optional filters",
+        "tags": [
+          "Requests"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The filtered requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RequestEntity"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A filter is invalid."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/requests/{id}/review": {
+      "patch": {
+        "summary": "Approve or reject a request as an owner",
+        "tags": [
+          "Requests"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "REJECTED"
+                    ]
+                  },
+                  "reject_reason": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Required when status is REJECTED."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The reviewed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestEntity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ID or request body is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The authenticated account is not an owner."
+          },
+          "404": {
+            "description": "The request was not found."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Get notifications for the authenticated user",
+        "description": "Returns a paginated list of notifications for the current user, sorted newest first.",
+        "tags": [
+          "Notifications"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page number (1-indexed)."
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Number of items per page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of notifications.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedNotifications"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "summary": "Mark a notification as read",
+        "description": "Sets is_read to true for the specified notification owned by the authenticated user.",
+        "tags": [
+          "Notifications"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The notification UUID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification marked as read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ID is not a valid UUID."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "404": {
+            "description": "The notification was not found or does not belong to the user."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/notifications/settings": {
+      "get": {
+        "summary": "Get notification settings for the authenticated user",
+        "description": "Returns the notification channel preferences for the current user.",
+        "tags": [
+          "Notifications"
+        ],
+        "responses": {
+          "200": {
+            "description": "The user's notification settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationSetting"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      },
+      "put": {
+        "summary": "Update notification settings for the authenticated user",
+        "description": "Creates or updates notification channel preferences. Uses upsert on (user_id, channel).",
+        "tags": [
+          "Notifications"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "settings"
+                ],
+                "properties": {
+                  "settings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "channel",
+                        "enabled"
+                      ],
+                      "properties": {
+                        "channel": {
+                          "type": "string",
+                          "description": "Notification channel name (e.g. \"email\", \"push\", \"in_app\")."
+                        },
+                        "enabled": {
+                          "type": "boolean",
+                          "description": "Whether this channel is enabled."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated notification settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationSetting"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/chat/ask": {
+      "post": {
+        "summary": "Hỏi đáp chính sách, quy định và hợp đồng bằng AI",
+        "description": "Nhận câu hỏi từ người dùng, tạo embedding bằng Gemini `text-embedding-004`,\ntìm kiếm các đoạn tài liệu liên quan qua Supabase vector search\n(`match_company_documents` và `match_user_contracts`), sau đó gọi\n`gemini-1.5-flash` để sinh câu trả lời có trích dẫn nguồn.\n\n**Quy tắc trả lời của AI:**\n- Chỉ trả lời dựa trên nội dung tài liệu nội bộ tìm được.\n- Trích dẫn rõ nguồn tài liệu trong câu trả lời.\n- Nếu không có thông tin, trả lời: *\"Tôi không có thông tin về vấn đề này. Vui lòng liên hệ quản lý để được hỗ trợ.\"*\n",
+        "tags": [
+          "Chat AI"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatAskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Câu trả lời được sinh bởi AI kèm danh sách nguồn tài liệu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Thiếu hoặc sai định dạng trường `question`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Người dùng chưa đăng nhập hoặc session hết hạn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ (Supabase RPC hoặc Gemini API).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}
