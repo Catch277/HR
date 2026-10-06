@@ -46,11 +46,7 @@ export function getApiDocs() {
               close_note: { type: "string", nullable: true },
               close_image_url: { type: "string", nullable: true },
               closed_by: { type: "string", format: "uuid", nullable: true },
-              closed_at: {
-                type: "string",
-                format: "date-time",
-                nullable: true,
-              },
+              closed_at: { type: "string", format: "date-time", nullable: true },
               audit_log: { type: "array", items: {} },
             },
           },
@@ -79,14 +75,7 @@ export function getApiDocs() {
           },
           RevenueReport: {
             type: "object",
-            required: [
-              "period",
-              "date",
-              "range",
-              "summary",
-              "comparison",
-              "series",
-            ],
+            required: ["period", "date", "range", "summary", "comparison", "series"],
             properties: {
               period: {
                 type: "string",
@@ -158,10 +147,7 @@ export function getApiDocs() {
             required: ["query", "type", "total", "users", "requests", "shifts"],
             properties: {
               query: { type: "string" },
-              type: {
-                type: "string",
-                enum: ["all", "users", "requests", "shifts"],
-              },
+              type: { type: "string", enum: ["all", "users", "requests", "shifts"] },
               total: { type: "integer" },
               users: {
                 type: "array",
@@ -188,13 +174,7 @@ export function getApiDocs() {
           },
           QuickSearchRequest: {
             type: "object",
-            required: [
-              "id",
-              "branch_id",
-              "request_type",
-              "status",
-              "updated_at",
-            ],
+            required: ["id", "branch_id", "request_type", "status", "updated_at"],
             properties: {
               id: { type: "string", format: "uuid" },
               branch_id: { type: "string", format: "uuid" },
@@ -232,18 +212,10 @@ export function getApiDocs() {
               user_id: { type: "string", format: "uuid" },
               title: { type: "string" },
               body: { type: "string" },
-              type: {
-                type: "string",
-                description:
-                  "Notification type (e.g. request_approved, shift_changed).",
-              },
+              type: { type: "string", description: "Notification type (e.g. request_approved, shift_changed)." },
               is_read: { type: "boolean" },
               related_entity_type: { type: "string", nullable: true },
-              related_entity_id: {
-                type: "string",
-                format: "uuid",
-                nullable: true,
-              },
+              related_entity_id: { type: "string", format: "uuid", nullable: true },
               created_at: { type: "string", format: "date-time" },
             },
           },
@@ -255,15 +227,9 @@ export function getApiDocs() {
                 type: "array",
                 items: { $ref: "#/components/schemas/Notification" },
               },
-              total: {
-                type: "integer",
-                description: "Total number of notifications.",
-              },
+              total: { type: "integer", description: "Total number of notifications." },
               page: { type: "integer", description: "Current page number." },
-              page_size: {
-                type: "integer",
-                description: "Number of items per page.",
-              },
+              page_size: { type: "integer", description: "Number of items per page." },
             },
           },
           NotificationSetting: {
@@ -272,10 +238,7 @@ export function getApiDocs() {
             properties: {
               id: { type: "string", format: "uuid" },
               user_id: { type: "string", format: "uuid" },
-              channel: {
-                type: "string",
-                description: "Notification channel (e.g. email, push, in_app).",
-              },
+              channel: { type: "string", description: "Notification channel (e.g. email, push, in_app)." },
               enabled: { type: "boolean" },
               updated_at: { type: "string", format: "date-time" },
             },
@@ -287,10 +250,8 @@ export function getApiDocs() {
               question: {
                 type: "string",
                 minLength: 1,
-                description:
-                  "Câu hỏi của nhân viên về chính sách, quy định hoặc hợp đồng.",
-                example:
-                  "Chính sách nghỉ phép năm của công ty là bao nhiêu ngày?",
+                description: "Câu hỏi của nhân viên về chính sách, quy định hoặc hợp đồng.",
+                example: "Chính sách nghỉ phép năm của công ty là bao nhiêu ngày?",
               },
             },
           },
@@ -304,8 +265,7 @@ export function getApiDocs() {
               },
               source: {
                 type: "string",
-                description:
-                  "Tên / tiêu đề tài liệu nguồn (dùng để trích dẫn).",
+                description: "Tên / tiêu đề tài liệu nguồn (dùng để trích dẫn).",
               },
               similarity: {
                 type: "number",
@@ -322,15 +282,12 @@ export function getApiDocs() {
             properties: {
               answer: {
                 type: "string",
-                description:
-                  "Câu trả lời được sinh bởi Gemini dựa trên ngữ cảnh tài liệu.",
-                example:
-                  "Theo [Nguồn 1: Nội quy công ty], nhân viên được nghỉ phép 12 ngày mỗi năm.",
+                description: "Câu trả lời được sinh bởi Gemini dựa trên ngữ cảnh tài liệu.",
+                example: "Theo [Nguồn 1: Nội quy công ty], nhân viên được nghỉ phép 12 ngày mỗi năm.",
               },
               sources: {
                 type: "array",
-                description:
-                  "Danh sách các đoạn tài liệu được dùng làm ngữ cảnh, sắp xếp theo độ tương đồng giảm dần.",
+                description: "Danh sách các đoạn tài liệu được dùng làm ngữ cảnh, sắp xếp theo độ tương đồng giảm dần.",
                 items: {
                   $ref: "#/components/schemas/DocumentChunk",
                 },
@@ -344,8 +301,7 @@ export function getApiDocs() {
               error: {
                 type: "string",
                 description: "Mô tả lỗi.",
-                example:
-                  "Trường `question` là bắt buộc và phải là chuỗi không rỗng.",
+                example: "Trường `question` là bắt buộc và phải là chuỗi không rỗng.",
               },
             },
           },
