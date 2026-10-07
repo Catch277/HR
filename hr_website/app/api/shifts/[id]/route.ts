@@ -1,3 +1,85 @@
+/**
+ * @swagger
+ * /api/shifts/{id}:
+ *   patch:
+ *     summary: Update a shift
+ *     tags:
+ *       - Shifts
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               employee_id:
+ *                 type: string
+ *               date:
+ *                 type: string
+ *               branch_id:
+ *                 type: string
+ *               shift_id:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: The updated shift.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MockShift'
+ *       400:
+ *         description: The JSON body is invalid.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: The shift was not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The update data is invalid or overlaps with an existing shift.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *   delete:
+ *     summary: Delete a shift
+ *     tags:
+ *       - Shifts
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: The shift was deleted.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required:
+ *                 - success
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *       404:
+ *         description: The shift was not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 import { NextResponse } from "next/server";
 import { deleteMockShift, updateMockShift } from "@/lib/mock/adminStore";
 

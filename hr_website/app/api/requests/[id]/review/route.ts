@@ -1,3 +1,53 @@
+/**
+ * @swagger
+ * /api/requests/{id}/review:
+ *   patch:
+ *     summary: Approve or reject a request
+ *     tags:
+ *       - Requests
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum:
+ *                   - APPROVED
+ *                   - REJECTED
+ *               reject_reason:
+ *                 type: string
+ *                 description: Required and non-empty when status is REJECTED.
+ *     responses:
+ *       200:
+ *         description: The updated request.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MockRequest'
+ *       400:
+ *         description: The JSON body or review data is invalid.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: The request was not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 import { NextResponse } from "next/server";
 import { reviewMockRequest } from "@/lib/mock/adminStore";
 

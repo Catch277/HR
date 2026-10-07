@@ -1,3 +1,44 @@
+/**
+ * @swagger
+ * /api/attendance/complaints:
+ *   post:
+ *     summary: Submit an attendance complaint
+ *     tags:
+ *       - Attendance
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - attendance_id
+ *               - complaint
+ *             properties:
+ *               attendance_id:
+ *                 type: string
+ *               complaint:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: The updated attendance record.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MockAttendance'
+ *       400:
+ *         description: The JSON body is invalid or required fields are missing.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: The attendance record was not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 import { NextResponse } from "next/server";
 import { addMockComplaint } from "@/lib/mock/adminStore";
 

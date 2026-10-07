@@ -138,6 +138,238 @@
           }
         }
       },
+      "MockRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "employeeName",
+          "role",
+          "type",
+          "branch",
+          "branchId",
+          "range",
+          "submitted",
+          "status",
+          "rejectReason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "employeeName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string"
+          },
+          "submitted": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "MockShift": {
+        "type": "object",
+        "required": [
+          "id",
+          "employeeId",
+          "employeeName",
+          "avatar",
+          "branchId",
+          "branch",
+          "date",
+          "dayLabel",
+          "shiftId",
+          "shiftLabel",
+          "start",
+          "end",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employeeId": {
+            "type": "string"
+          },
+          "employeeName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "dayLabel": {
+            "type": "string"
+          },
+          "shiftId": {
+            "type": "string"
+          },
+          "shiftLabel": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "LEAVE"
+            ]
+          }
+        }
+      },
+      "MockEmployeeStatus": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "role",
+          "branchId",
+          "branch",
+          "avatar",
+          "status",
+          "checkIn",
+          "location"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "WORKING",
+              "NOT_STARTED",
+              "ON_LEAVE",
+              "RESIGNED"
+            ]
+          },
+          "checkIn": {
+            "type": "string",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "MockAttendance": {
+        "type": "object",
+        "required": [
+          "id",
+          "employeeId",
+          "employeeName",
+          "avatar",
+          "branch",
+          "date",
+          "shift",
+          "checkIn",
+          "checkOut",
+          "status",
+          "hours",
+          "complaint"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employeeId": {
+            "type": "string"
+          },
+          "employeeName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "shift": {
+            "type": "string"
+          },
+          "checkIn": {
+            "type": "string"
+          },
+          "checkOut": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ON_TIME",
+              "LATE",
+              "EARLY_LEAVE"
+            ]
+          },
+          "hours": {
+            "type": "number"
+          },
+          "complaint": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
       "RevenueReport": {
         "type": "object",
         "required": [
@@ -616,6 +848,252 @@
         }
       }
     },
+    "/api/shifts": {
+      "get": {
+        "summary": "Get shifts with optional filters",
+        "tags": [
+          "Shifts"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Inclusive lower bound compared lexically with shift dates."
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Inclusive upper bound compared lexically with shift dates."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Shifts matching the optional filters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MockShift"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a shift",
+        "tags": [
+          "Shifts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "employee_id",
+                  "date",
+                  "branch_id",
+                  "shift_id"
+                ],
+                "properties": {
+                  "employee_id": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "branch_id": {
+                    "type": "string"
+                  },
+                  "shift_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created shift.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MockShift"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The JSON body is invalid or required fields are missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The shift data is invalid or overlaps with an existing shift.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shifts/{id}": {
+      "patch": {
+        "summary": "Update a shift",
+        "tags": [
+          "Shifts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "employee_id": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "branch_id": {
+                    "type": "string"
+                  },
+                  "shift_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated shift.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MockShift"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The JSON body is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The shift was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The update data is invalid or overlaps with an existing shift.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a shift",
+        "tags": [
+          "Shifts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The shift was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The shift was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/search": {
       "get": {
         "summary": "Search users, requests, and shifts",
@@ -897,53 +1375,41 @@
         "parameters": [
           {
             "in": "query",
-            "name": "branch_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "in": "query",
-            "name": "request_type",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "status",
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Exact request status to filter by; \"all\" disables this filter."
+          },
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact branch ID to filter by; \"all\" disables this filter."
           }
         ],
         "responses": {
           "200": {
-            "description": "The filtered requests.",
+            "description": "Requests matching the optional filters.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/RequestEntity"
+                    "$ref": "#/components/schemas/MockRequest"
                   }
                 }
               }
             }
-          },
-          "400": {
-            "description": "A filter is invalid."
-          },
-          "500": {
-            "description": "An unexpected server error occurred."
           }
         }
       }
     },
     "/api/requests/{id}/review": {
       "patch": {
-        "summary": "Approve or reject a request as an owner",
+        "summary": "Approve or reject a request",
         "tags": [
           "Requests"
         ],
@@ -953,8 +1419,7 @@
             "name": "id",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -977,8 +1442,7 @@
                   },
                   "reject_reason": {
                     "type": "string",
-                    "nullable": true,
-                    "description": "Required when status is REJECTED."
+                    "description": "Required and non-empty when status is REJECTED."
                   }
                 }
               }
@@ -987,29 +1451,34 @@
         },
         "responses": {
           "200": {
-            "description": "The reviewed request.",
+            "description": "The updated request.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequestEntity"
+                  "$ref": "#/components/schemas/MockRequest"
                 }
               }
             }
           },
           "400": {
-            "description": "The ID or request body is invalid."
-          },
-          "401": {
-            "description": "Authentication is required."
-          },
-          "403": {
-            "description": "The authenticated account is not an owner."
+            "description": "The JSON body or review data is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "The request was not found."
-          },
-          "500": {
-            "description": "An unexpected server error occurred."
+            "description": "The request was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1211,6 +1680,51 @@
         }
       }
     },
+    "/api/employee-status": {
+      "get": {
+        "summary": "Get employee statuses with an optional branch filter",
+        "tags": [
+          "Employees"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Employee statuses and the response generation timestamp.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "updated_at",
+                    "data"
+                  ],
+                  "properties": {
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MockEmployeeStatus"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/ask": {
       "post": {
         "summary": "Hỏi đáp chính sách, quy định và hợp đồng bằng AI",
@@ -1261,6 +1775,107 @@
           },
           "500": {
             "description": "Lỗi máy chủ nội bộ (Supabase RPC hoặc Gemini API).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/attendance": {
+      "get": {
+        "summary": "Get attendance records with optional filters",
+        "tags": [
+          "Attendance"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employee_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attendance records matching the optional filters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MockAttendance"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/attendance/complaints": {
+      "post": {
+        "summary": "Submit an attendance complaint",
+        "tags": [
+          "Attendance"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attendance_id",
+                  "complaint"
+                ],
+                "properties": {
+                  "attendance_id": {
+                    "type": "string"
+                  },
+                  "complaint": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The updated attendance record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MockAttendance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The JSON body is invalid or required fields are missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The attendance record was not found.",
             "content": {
               "application/json": {
                 "schema": {

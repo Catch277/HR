@@ -1,3 +1,78 @@
+/**
+ * @swagger
+ * /api/shifts:
+ *   get:
+ *     summary: Get shifts with optional filters
+ *     tags:
+ *       - Shifts
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *         description: Inclusive lower bound compared lexically with shift dates.
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *         description: Inclusive upper bound compared lexically with shift dates.
+ *     responses:
+ *       200:
+ *         description: Shifts matching the optional filters.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/MockShift'
+ *   post:
+ *     summary: Create a shift
+ *     tags:
+ *       - Shifts
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - employee_id
+ *               - date
+ *               - branch_id
+ *               - shift_id
+ *             properties:
+ *               employee_id:
+ *                 type: string
+ *               date:
+ *                 type: string
+ *               branch_id:
+ *                 type: string
+ *               shift_id:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: The created shift.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MockShift'
+ *       400:
+ *         description: The JSON body is invalid or required fields are missing.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The shift data is invalid or overlaps with an existing shift.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { createMockShift, getMockShifts } from "@/lib/mock/adminStore";
 
