@@ -18,6 +18,14 @@ import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient"
  * `employee` and `shift` are embedded resources resolved from the foreign keys, so the
  * schedule screen gets names without a second round trip (and without a staff-list endpoint).
  */
+/**
+ * `employee` and `shift` are embedded resources resolved from the foreign keys, so the schedule
+ * screen gets names without a second round trip (and without a staff-list endpoint).
+ *
+ * `employee` names its foreign key explicitly: this table points at `users` twice
+ * (`employee_id` and `created_by`), and PostgREST refuses to guess which one an unqualified
+ * `users` embed means (PGRST201).
+ */
 const ASSIGNMENT_COLUMNS = [
   "id",
   "employee_id",
@@ -28,7 +36,7 @@ const ASSIGNMENT_COLUMNS = [
   "note",
   "created_at",
   "updated_at",
-  "employee:users (id, full_name)",
+  "employee:users!shift_assignments_employee_id_fkey (id, full_name)",
   "shift:shifts (id, name, branch_id, start_time, end_time)",
 ].join(", ");
 

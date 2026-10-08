@@ -24,7 +24,9 @@ const REQUEST_COLUMNS = [
   "approver_id",
   "created_at",
   "updated_at",
-  "requester:users (id, full_name)",
+  // The foreign key is named explicitly: a request points at `users` twice (the requester and
+  // the approver), so an unqualified `users` embed is ambiguous (PGRST201).
+  "requester:users!requests_user_id_fkey (id, full_name)",
 ].join(", ");
 
 /**
