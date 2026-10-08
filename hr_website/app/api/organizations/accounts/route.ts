@@ -4,22 +4,31 @@
  *   get:
  *     summary: Is the staff account service available?
  *     description: |
- *       SCRUM-52: probes the `staff-account` Edge Function with the caller's own token. `available`
- *       is false when the function is not deployed, and the Tổ chức screen then offers the invite
- *       path instead of a button that would always fail.
+ *       SCRUM-52: probes the `staff-account` Edge Function with the caller's own token and reports
+ *       *why* it is unusable, not merely that it is. `reason` separates "not deployed" (an operator
+ *       task) from "not allowed" (this account is not OWNER/CHU of an organization), "unauthenticated"
+ *       (the function refused the session token) and "misconfigured" (deployed but answering 5xx, for
+ *       example missing secrets). The Tổ chức screen offers the provisioning form only for `ready`.
  *     tags:
  *       - Organizations
  *     responses:
  *       200:
- *         description: Whether the function answered.
+ *         description: Whether the function answered, and the reason.
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *               required: [available]
+ *               required: [available, reason]
  *               properties:
  *                 available:
  *                   type: boolean
+ *                 reason:
+ *                   type: string
+ *                   enum: [ready, not_deployed, unauthenticated, not_allowed, misconfigured, unknown]
+ *                 detail:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Short message from the function (or the transport failure); safe for a manager to read.
  *       401:
  *         description: Authentication is required.
  *         content:
@@ -134,15 +143,19 @@ export async function GET() {
     const getAvailability = new GetStaffProvisioningAvailabilityUseCase(
       new EdgeFunctionStaffProvisioningService(),
     );
-    const available = await getAvailability.execute({
+    const availability = await getAvailability.execute({
       callerToken: caller.accessToken,
     });
 
-    return NextResponse.json({ available });
+    return NextResponse.json(availability);
   } catch (error) {
-    // A probe never fails the screen: "not available" is the answer that keeps the form hidden.
+    // A probe never fails the screen: "unknown" keeps the form hidden with an instruction.
     console.error("Failed to probe the staff account service", error);
-    return NextResponse.json({ available: false });
+    return NextResponse.json({
+      available: false,
+      reason: "unknown",
+      detail: null,
+    });
   }
 }
 

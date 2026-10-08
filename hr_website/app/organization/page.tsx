@@ -104,6 +104,36 @@ function actionErrorMessage(status: number, serverMessage?: string): string {
   return serverMessage ?? "Không thực hiện được thao tác. Vui lòng thử lại.";
 }
 
+type StaffProvisioningAvailability = {
+  available: boolean;
+  reason: string;
+  detail: string | null;
+};
+
+/**
+ * Vietnamese copy for the reason the probe reported (SCRUM-52). "Not deployed" is something the
+ * operator fixes, "not allowed" is a role problem and "misconfigured" means the function is there but
+ * failing — three different actions, so they must not share one sentence.
+ */
+function provisioningNote(
+  availability: StaffProvisioningAvailability | null,
+): string {
+  switch (availability?.reason) {
+    case "not_allowed":
+      return "Tài khoản của bạn cần thuộc một tổ chức với vai trò chủ sở hữu (OWNER) hoặc quản lý chi nhánh (CHU) mới tạo được tài khoản cho nhân viên.";
+    case "unauthenticated":
+      return "Edge Function đã từ chối phiên đăng nhập. Kiểm tra lại function `staff-account`: phải bật \"Verify JWT\" và không được tắt xác thực token.";
+    case "misconfigured":
+      return `Edge Function đã deploy nhưng đang báo lỗi${
+        availability?.detail ? `: ${availability.detail}` : "."
+      } Kiểm tra secrets của function (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) và log của nó.`;
+    case "ready":
+      return "";
+    default:
+      return "Chưa kết nối được Edge Function `staff-account`. Hãy deploy nó trong Supabase: Edge Functions → Create a new function → tên chính xác là `staff-account` → dán nội dung supabase/functions/staff-account/index.ts → Deploy (giữ Verify JWT bật), rồi tải lại trang này.";
+  }
+}
+
 const inputClassName =
   "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
 
@@ -125,7 +155,8 @@ export default function OrganizationPage() {
   const [accountRole, setAccountRole] = useState<string>("EMPLOYEE");
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
-  const [provisionAvailable, setProvisionAvailable] = useState(false);
+  const [provisioning, setProvisioning] =
+    useState<StaffProvisioningAvailability | null>(null);
   const [copied, setCopied] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -135,7 +166,7 @@ export default function OrganizationPage() {
     async function load(): Promise<{
       summary: OrganizationSummary | null;
       invites: OrganizationInvite[];
-      provisionAvailable: boolean;
+      provisioning: StaffProvisioningAvailability | null;
       error: string | null;
     }> {
       const summaryResponse = await fetch("/api/organizations/current", {
@@ -150,7 +181,7 @@ export default function OrganizationPage() {
         return {
           summary: null,
           invites: [],
-          provisionAvailable: false,
+          provisioning: null,
           error: actionErrorMessage(summaryResponse.status, data?.error),
         };
       }
@@ -163,20 +194,19 @@ export default function OrganizationPage() {
         return {
           summary: summaryData,
           invites: [],
-          provisionAvailable: false,
+          provisioning: null,
           error: null,
         };
       }
 
-      // SCRUM-52: without the deployed Edge Function the "Tạo tài khoản" form would fail every
-      // time, so the form is only offered when the function answers the probe.
+      // SCRUM-52: the "Tạo tài khoản" form is only offered when the Edge Function can actually be
+      // used, and the probe says *why* when it cannot (not deployed / not allowed / misconfigured).
       const availabilityResponse = await fetch("/api/organizations/accounts", {
         cache: "no-store",
       });
-      const provisionAvailable = availabilityResponse.ok
-        ? ((await availabilityResponse.json()) as { available?: boolean })
-            .available === true
-        : false;
+      const provisioning = availabilityResponse.ok
+        ? ((await availabilityResponse.json()) as StaffProvisioningAvailability)
+        : null;
 
       const invitesResponse = await fetch("/api/organizations/invites", {
         cache: "no-store",
@@ -190,7 +220,7 @@ export default function OrganizationPage() {
         return {
           summary: summaryData,
           invites: [],
-          provisionAvailable,
+          provisioning,
           error: actionErrorMessage(invitesResponse.status, data?.error),
         };
       }
@@ -198,7 +228,7 @@ export default function OrganizationPage() {
       return {
         summary: summaryData,
         invites: (await invitesResponse.json()) as OrganizationInvite[],
-        provisionAvailable,
+        provisioning,
         error: null,
       };
     }
@@ -211,7 +241,7 @@ export default function OrganizationPage() {
 
         setSummary(result.summary);
         setInvites(result.invites);
-        setProvisionAvailable(result.provisionAvailable);
+        setProvisioning(result.provisioning);
         setNameDraft(result.summary?.organization?.name ?? "");
         setPageError(result.error ?? "");
         setLoading(false);
@@ -658,7 +688,7 @@ export default function OrganizationPage() {
                 </div>
               </div>
 
-              {provisionAvailable ? (
+              {provisioning?.available ? (
                 <>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <label className="block text-xs font-semibold text-slate-600">
@@ -743,12 +773,7 @@ export default function OrganizationPage() {
               ) : (
                 <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                  <span>
-                    Chức năng này chưa được bật: cần triển khai Edge Function{" "}
-                    <span className="font-mono font-semibold">staff-account</span> (xem README).
-                    Trong lúc đó hãy dùng &ldquo;Thêm vào danh sách&rdquo; bên dưới để mời tài
-                    khoản đã tự đăng ký.
-                  </span>
+                  <span>{provisioningNote(provisioning)}</span>
                 </div>
               )}
             </section>

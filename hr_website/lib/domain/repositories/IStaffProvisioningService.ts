@@ -1,5 +1,6 @@
 import type { InviteRole } from "@/lib/domain/entities/OrganizationInvite";
 import type { StaffProvisionResult } from "@/lib/domain/entities/StaffProvisionResult";
+import type { StaffProvisioningAvailability } from "@/lib/domain/entities/StaffProvisioningAvailability";
 
 /**
  * The privileged half of SCRUM-52: creating a Supabase Auth account for someone else needs the
@@ -7,8 +8,12 @@ import type { StaffProvisionResult } from "@/lib/domain/entities/StaffProvisionR
  * the *caller's* access token and never sees a secret.
  */
 export interface IStaffProvisioningService {
-  /** True when the function answers — the screen hides the form instead of failing every time. */
-  isAvailable(callerToken: string): Promise<boolean>;
+  /**
+   * Reports whether the function can be used, and why not when it cannot. The distinction matters on
+   * screen: "not deployed" is an operator task, "not allowed" is a role or organization problem, and
+   * "misconfigured" means the function is there but failing.
+   */
+  checkAvailability(callerToken: string): Promise<StaffProvisioningAvailability>;
   createAccount(input: {
     callerToken: string;
     email: string;

@@ -1,5 +1,6 @@
 import type { InviteRole } from "@/lib/domain/entities/OrganizationInvite";
 import type { StaffProvisionResult } from "@/lib/domain/entities/StaffProvisionResult";
+import type { StaffProvisioningAvailability } from "@/lib/domain/entities/StaffProvisioningAvailability";
 import { StaffAccountEmailTakenError } from "@/lib/domain/errors/StaffAccountEmailTakenError";
 import { StaffProvisioningForbiddenError } from "@/lib/domain/errors/StaffProvisioningForbiddenError";
 import { StaffProvisioningInputError } from "@/lib/domain/errors/StaffProvisioningInputError";
@@ -32,6 +33,17 @@ function functionUrl(): string | null {
   }
 
   return `${supabaseUrl.replace(/\/+$/, "")}/${FUNCTION_PATH}`;
+}
+
+/** The function answers `{ error }`; a gateway page or an empty body is simply ignored. */
+async function readErrorMessage(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as { error?: string };
+
+    return data.error ?? "";
+  } catch {
+    return "";
+  }
 }
 
 function throwForStatus(status: number, message: string): never {
@@ -72,25 +84,66 @@ function throwForStatus(status: number, message: string): never {
 export class EdgeFunctionStaffProvisioningService
   implements IStaffProvisioningService
 {
-  async isAvailable(callerToken: string): Promise<boolean> {
+  async checkAvailability(
+    callerToken: string,
+  ): Promise<StaffProvisioningAvailability> {
     const url = functionUrl();
 
     if (!url) {
-      return false;
+      return {
+        available: false,
+        reason: "not_deployed",
+        detail:
+          "NEXT_PUBLIC_SUPABASE_URL is not set, so the function URL cannot be derived.",
+      };
     }
 
+    let response: Response;
+
     try {
-      const response = await fetch(url, {
+      response = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${callerToken}` },
         cache: "no-store",
       });
-
-      return response.ok;
-    } catch {
-      // Not deployed, no DNS, offline project: the screen simply hides the form.
-      return false;
+    } catch (error) {
+      // No DNS, no route, wrong project ref: from here this is indistinguishable from "not deployed".
+      return {
+        available: false,
+        reason: "not_deployed",
+        detail: error instanceof Error ? error.message : null,
+      };
     }
+
+    if (response.ok) {
+      return { available: true, reason: "ready", detail: null };
+    }
+
+    const detail = await readErrorMessage(response);
+
+    if (response.status === 404) {
+      return { available: false, reason: "not_deployed", detail };
+    }
+
+    if (response.status === 401) {
+      // The function is there but refused the session token: "Verify JWT" turned off, usually.
+      return { available: false, reason: "unauthenticated", detail };
+    }
+
+    if (response.status === 403) {
+      // Deployed and reachable — the caller simply is not OWNER/CHU of an organization.
+      return { available: false, reason: "not_allowed", detail };
+    }
+
+    if (response.status >= 500) {
+      return { available: false, reason: "misconfigured", detail };
+    }
+
+    return {
+      available: false,
+      reason: "unknown",
+      detail: detail || `HTTP ${response.status}`,
+    };
   }
 
   async createAccount(input: {
@@ -148,10 +201,7 @@ export class EdgeFunctionStaffProvisioningService
     }
 
     if (!response.ok) {
-      const message = await response
-        .json()
-        .then((data: { error?: string }) => data.error ?? "")
-        .catch(() => "");
+      const message = await readErrorMessage(response);
 
       throwForStatus(response.status, message);
     }

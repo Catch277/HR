@@ -3195,23 +3195,40 @@
     "/api/organizations/accounts": {
       "get": {
         "summary": "Is the staff account service available?",
-        "description": "SCRUM-52: probes the `staff-account` Edge Function with the caller's own token. `available`\nis false when the function is not deployed, and the Tổ chức screen then offers the invite\npath instead of a button that would always fail.\n",
+        "description": "SCRUM-52: probes the `staff-account` Edge Function with the caller's own token and reports\n*why* it is unusable, not merely that it is. `reason` separates \"not deployed\" (an operator\ntask) from \"not allowed\" (this account is not OWNER/CHU of an organization), \"unauthenticated\"\n(the function refused the session token) and \"misconfigured\" (deployed but answering 5xx, for\nexample missing secrets). The Tổ chức screen offers the provisioning form only for `ready`.\n",
         "tags": [
           "Organizations"
         ],
         "responses": {
           "200": {
-            "description": "Whether the function answered.",
+            "description": "Whether the function answered, and the reason.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
-                    "available"
+                    "available",
+                    "reason"
                   ],
                   "properties": {
                     "available": {
                       "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "ready",
+                        "not_deployed",
+                        "unauthenticated",
+                        "not_allowed",
+                        "misconfigured",
+                        "unknown"
+                      ]
+                    },
+                    "detail": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Short message from the function (or the transport failure); safe for a manager to read."
                     }
                   }
                 }

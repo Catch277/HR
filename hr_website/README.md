@@ -303,9 +303,12 @@ deliberately does not have. That single capability therefore lives in an Edge Fu
   rather than trusting this app. The URL is derived from `NEXT_PUBLIC_SUPABASE_URL` as
   `…/functions/v1/staff-account`; set `STAFF_ACCOUNT_FUNCTION_URL` to override it if you rename the
   function.
-- **Behaviour without it:** `GET /api/organizations/accounts` answers `{ "available": false }`, the
-  provisioning form on `/organization` is replaced by a note, and the invite path (`POST
-  /api/organizations/invites`) still onboards people — the endpoints never pretend to work.
+- **Behaviour without it:** `GET /api/organizations/accounts` answers `{ available, reason, detail }`
+  where `reason` is one of `ready`, `not_deployed`, `unauthenticated` (the function refused the session
+  token — keep "Verify JWT" on), `not_allowed` (this account is not `OWNER`/`CHU` of an organization) or
+  `misconfigured` (deployed but answering 5xx, e.g. missing secrets). The `/organization` screen shows the
+  instruction that matches the reason instead of a form that would always fail, and the invite path
+  (`POST /api/organizations/invites`) still onboards people.
 - **What it does:** creates the account with `email_confirm: true` and the owner-typed temporary
   password, sets `must_change_password`, and writes the register row (`source = 'provisioned'`). The
   password is never stored or logged. It also serves `action: "reset_password"` for a member of the
@@ -444,6 +447,7 @@ An honest snapshot of what is real and what is still a prototype:
 | `403` on join although the code is right                             | The account's email is not on that organization's register — this is the anti-outsider rule. The owner adds it on `/organization`; the message says so                      |
 | `429` when joining                                                   | Ten failed join attempts by that account in the last hour (`organization_join_attempts` is both the trail and the throttle)                                                   |
 | "The staff account service is not available." (`503`)                | The `staff-account` Edge Function is not deployed yet — deploy it (see "The `staff-account` Edge Function") or onboard people with an invite instead                          |
+| `/organization` shows the amber "chức năng này chưa được bật" note   | Read the sentence: the probe (`GET /api/organizations/accounts`) says which case it is — `not_deployed` (deploy the function), `not_allowed` (your account needs an organization and `OWNER`/`CHU`), `unauthenticated` (turn "Verify JWT" back on) or `misconfigured` (the function answers 5xx: check its secrets and logs) |
 | Attendance / revenue / schedules look empty after `SCRUM-53`         | The rows still have `organization_id = null`: the script's backfill only runs when exactly one organization exists. Assign them with the `update` statements printed at the end of that script, then re-run its second verification query |
 
 ## Related documents
