@@ -8,6 +8,7 @@ import {
   Clock3,
   FileText,
   CalendarRange,
+  Landmark,
   PackageSearch,
   UserCheck,
   UsersRound,
@@ -17,11 +18,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
-import { isPublicPath } from "@/lib/publicPaths";
+import { isPublicPath, isShellLessPath } from "@/lib/publicPaths";
 
 const navItems = [
   { name: "Tổng quan", href: "/", icon: LayoutDashboard },
+  { name: "Tổ chức", href: "/organization", icon: Landmark },
   { name: "Quản lý chi nhánh", href: "/branches", icon: Building2 },
   { name: "Cơ sở vật chất", href: "/facilities", icon: PackageSearch },
   { name: "Doanh thu", href: "/revenue", icon: CircleDollarSign },
@@ -35,11 +38,44 @@ const navItems = [
   { name: "Trợ lý AI", href: "/chat", icon: Bot },
 ];
 
+type OrganizationSummary = {
+  organization: { id: string; name: string } | null;
+  member_count: number;
+};
+
 export default function Sidebar() {
   const pathname = usePathname();
+  const [organization, setOrganization] = useState<OrganizationSummary | null>(null);
 
-  // The login and register screens render outside the authenticated shell.
-  if (isPublicPath(pathname)) {
+  // The organization card in the footer; anything unexpected (no session, script not applied yet)
+  // simply leaves it empty instead of breaking the navigation.
+  useEffect(() => {
+    if (isPublicPath(pathname)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch("/api/organizations/current", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: OrganizationSummary | null) => {
+        if (!cancelled) {
+          setOrganization(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOrganization(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  // Onboarding screens hide the navigation (every link would bounce back) but keep the header.
+  if (isShellLessPath(pathname)) {
     return null;
   }
 
@@ -90,17 +126,29 @@ export default function Sidebar() {
 
       <div className="m-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-          <Building2 size={14} className="text-[#0C66E4]" />
-          Chi nhánh Q.1 - HCM
+          <Landmark size={14} className="text-[#0C66E4]" />
+          <span className="truncate">
+            {organization?.organization?.name ?? "Chưa có tổ chức"}
+          </span>
         </div>
         <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
-          <Clock3 size={12} /> Ca chính: 08:00 - 17:30
+          {organization ? (
+            <>
+              <UsersRound size={12} />
+              {organization.member_count} thành viên
+            </>
+          ) : (
+            <>
+              <Clock3 size={12} /> Ca chính: 08:00 - 17:30
+            </>
+          )}
         </p>
         <p className="mt-1 text-[10px] text-slate-500">
           Bản phát hành{" "}
-          <span className="float-right font-medium text-slate-700">v2.4</span>
+          <span className="float-right font-medium text-slate-700">v2.5</span>
         </p>
       </div>
     </aside>
   );
 }
+

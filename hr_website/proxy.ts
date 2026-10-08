@@ -3,11 +3,55 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isPublicPath } from "@/lib/publicPaths";
 
+/** Screens that belong to onboarding: reachable while the account has no organization yet. */
+const ONBOARDING_PATH = "/onboarding";
+const CHANGE_PASSWORD_PATH = "/change-password";
+
+type MembershipState = {
+  organizationId: string | null;
+  mustChangePassword: boolean;
+};
+
+/**
+ * The onboarding gates (SCRUM-51/52) need one read of the caller's `users` row. It answers `null`
+ * when that row — or the columns this script adds — is not there yet, and both gates are skipped in
+ * that case: blocking every screen because a script has not been applied would be worse than the
+ * behaviour before the gate existed.
+ */
+async function loadMembershipState(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string,
+): Promise<MembershipState | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("organization_id, must_change_password")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  const row = data as {
+    organization_id: string | null;
+    must_change_password: boolean | null;
+  };
+
+  return {
+    organizationId: row.organization_id ?? null,
+    mustChangePassword: row.must_change_password === true,
+  };
+}
+
 /**
  * Next.js 16 renamed `middleware.ts` to `proxy.ts` (same behaviour, but it defaults to the
  * Node.js runtime and rejects a `runtime` export). This performs the optimistic auth check
  * and refreshes the Supabase session cookies; the authoritative gate stays the `401` inside
  * each route handler, which runs against the request-scoped client.
+ *
+ * It also owns the two onboarding redirects, because it is the only place that knows both the
+ * pathname and the session: an account an owner provisioned changes its password first, and an
+ * account that belongs to no organization creates or joins one before seeing any data.
  */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -52,6 +96,28 @@ export async function proxy(request: NextRequest) {
 
   if (user && isPublicPath(pathname)) {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (user) {
+    const state = await loadMembershipState(supabase, user.id);
+
+    if (state) {
+      if (state.mustChangePassword && pathname !== CHANGE_PASSWORD_PATH) {
+        return NextResponse.redirect(new URL(CHANGE_PASSWORD_PATH, request.url));
+      }
+
+      if (!state.mustChangePassword && !state.organizationId && pathname !== ONBOARDING_PATH) {
+        return NextResponse.redirect(new URL(ONBOARDING_PATH, request.url));
+      }
+
+      if (
+        state.organizationId &&
+        (pathname === ONBOARDING_PATH || pathname === CHANGE_PASSWORD_PATH)
+      ) {
+        // Both onboarding screens are done with; the shell is the right place now.
+        return NextResponse.redirect(new URL("/", request.url));
+      }
+    }
   }
 
   return response;
