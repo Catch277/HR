@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../routes/app_routers.dart';
+
+// Biến toàn cục lấy client Supabase
+final supabase = Supabase.instance.client;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -7,36 +12,126 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
+
+  // Controllers cho Email & Password
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
   bool _rememberMe = false;
+  bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
     super.initState();
-    // Cấu hình Controller cho hiệu ứng trượt (Slide-up animation)
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 1), // Bắt đầu ở vị trí khuất bên dưới
-      end: Offset.zero,          // Trượt lên vị trí gốc
+      begin: const Offset(0, 1),
+      end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
     ));
 
-    // Kích hoạt hiệu ứng trượt ngay khi vào màn hình
     _controller.forward();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  // 1. Hàm Đăng nhập thực tế với Supabase
+  Future<void> _loginWithSupabase() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showSnackBar('Vui lòng nhập đầy đủ Email và Mật khẩu!', Colors.orangeAccent);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Gọi API Đăng nhập của Supabase
+      final response = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      if (response.user != null) {
+        if (!mounted) return;
+        _showSnackBar('Đăng nhập thành công!', const Color(0xFF10B981));
+
+        // Chuyển tới màn hình Home Employee
+        Navigator.pushReplacementNamed(context, AppRoutes.home_employee);
+      }
+    } on AuthException catch (e) {
+      _showSnackBar(e.message, Colors.redAccent);
+    } catch (e) {
+      _showSnackBar('Đã có lỗi xảy ra: $e', Colors.redAccent);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // 2. Hàm Tự động tạo 1 tài khoản mới trên Supabase và điền tự động
+  Future<void> _autoCreateAccountAndFill() async {
+    setState(() => _isLoading = true);
+
+    // Tạo email & password ngẫu nhiên dạng nv_1234@company.com
+    final randomId = DateTime.now().millisecondsSinceEpoch.toString().substring(8);
+    final autoEmail = 'employee_$randomId@company.com';
+    const autoPassword = 'password123';
+
+    try {
+      // Gọi API Đăng ký tài khoản trên Supabase
+      final response = await supabase.auth.signUp(
+        email: autoEmail,
+        password: autoPassword,
+      );
+
+      if (response.user != null) {
+        // Tự động điền thông tin vừa tạo vào 2 ô TextField
+        _emailController.text = autoEmail;
+        _passwordController.text = autoPassword;
+
+        if (!mounted) return;
+        _showSnackBar(
+          'Đã tự tạo tài khoản thành công trên Supabase!\nEmail: $autoEmail',
+          const Color(0xFF2563EB),
+        );
+      }
+    } on AuthException catch (e) {
+      _showSnackBar(e.message, Colors.redAccent);
+    } catch (e) {
+      _showSnackBar('Lỗi tự tạo tài khoản: $e', Colors.redAccent);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override
@@ -44,10 +139,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: Colors.blue[200], // Màu nền xanh nhạt cho toàn bộ màn hình
+      backgroundColor: Colors.blue[200],
       body: Stack(
         children: [
-          // 1. Ảnh background phía trên (Asset Image)
+          // 1. Background Image
           Positioned(
             top: 0,
             left: 0,
@@ -58,42 +153,37 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 Container(
                   decoration: const BoxDecoration(
                     image: DecorationImage(
-                      image: AssetImage('assets/images/bg.png'), // Đổi tên file ảnh của bạn tại đây
+                      image: AssetImage('assets/images/bg.png'),
                       fit: BoxFit.cover,
                     ),
                   ),
                 ),
-                // Lớp phủ đen mờ nhẹ giúp chữ Welcome nổi bật
-                Container(
-                  color: Colors.black.withOpacity(0.2),
-                ),
-                // Text Welcome Back
+                Container(color: Colors.black.withOpacity(0.2)),
                 Positioned(
-  top: size.height * 0.12,
-  left: 28,
-  child: Text(
-    'Welcome\nHuman Resources!',
-    style: TextStyle(
-      color: Colors.white,
-      fontSize: 34,
-      fontWeight: FontWeight.bold,
-      height: 1.2,
-      // Thêm danh sách các bóng ở đây
-      shadows: [
-        Shadow(
-          offset: const Offset(2.0, 2.0), // Độ lệch x, y của bóng
-          blurRadius: 6.0,                  // Độ mờ nhòe của bóng
-          color: Colors.black.withOpacity(0.7), // Màu sắc và độ trong suốt của bóng
-        ),
-      ],
-    ),
-  ),
-),
+                  top: size.height * 0.12,
+                  left: 28,
+                  child: Text(
+                    'Welcome Humora\nQuản lý nhân sự',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 34,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                      shadows: [
+                        Shadow(
+                          offset: const Offset(2.0, 2.0),
+                          blurRadius: 6.0,
+                          color: Colors.black.withOpacity(0.7),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
 
-          // 2. Thẻ Login màu đen tự động trượt lên
+          // 2. Thẻ Form Login
           Align(
             alignment: Alignment.bottomCenter,
             child: SlideTransition(
@@ -102,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 height: size.height * 0.62,
                 width: double.infinity,
                 decoration: const BoxDecoration(
-                  color: Color.fromARGB(255, 253, 252, 252), // Tone đen xám hiện đại
+                  color: Color.fromARGB(255, 253, 252, 252),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(36),
                     topRight: Radius.circular(36),
@@ -118,25 +208,29 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Nút bấm hình tròn trượt nổi ở mép thẻ
+                    // Floating Action Button cho Đăng Nhập
                     Positioned(
                       top: -28,
                       right: 32,
                       child: FloatingActionButton(
-                        onPressed: () {
-                          // Thao tác đăng nhập
-                        },
+                        onPressed: _isLoading ? null : _loginWithSupabase,
                         elevation: 6,
                         backgroundColor: Colors.white,
                         shape: const CircleBorder(),
-                        child: const Icon(
-                          Icons.arrow_forward,
-                          color: Colors.black,
-                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(
+                                Icons.arrow_forward,
+                                color: Colors.black,
+                              ),
                       ),
                     ),
 
-                    // Nội dung form Login
+                    // Nội dung Form
                     Padding(
                       padding: const EdgeInsets.fromLTRB(28, 40, 28, 20),
                       child: SingleChildScrollView(
@@ -146,24 +240,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             const Text(
                               'Login',
                               style: TextStyle(
-                                color: Color.fromARGB(255, 0, 0, 0),
+                                color: Colors.black,
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const SizedBox(height: 30),
+                            const SizedBox(height: 24),
 
                             // Input Email
                             TextField(
-                              style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 hintText: 'Email address',
-                                hintStyle: TextStyle(color: const Color.fromARGB(255, 11, 11, 11)),
+                                hintStyle: const TextStyle(color: Colors.grey),
                                 enabledBorder: UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.grey[800]!),
+                                  borderSide: BorderSide(color: Colors.grey[400]!),
                                 ),
                                 focusedBorder: const UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Color.fromARGB(255, 0, 0, 0)),
+                                  borderSide: BorderSide(color: Colors.black),
                                 ),
                               ),
                             ),
@@ -171,17 +267,30 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                             // Input Password
                             TextField(
-                              obscureText: true,
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
                               style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 hintText: 'Password',
-                                hintStyle: TextStyle(color: const Color.fromARGB(255, 11, 11, 11)),
-                                suffixIcon: Icon(Icons.visibility_off_outlined, color: Colors.grey[500]),
+                                hintStyle: const TextStyle(color: Colors.grey),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
                                 enabledBorder: UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.grey[800]!),
+                                  borderSide: BorderSide(color: Colors.grey[400]!),
                                 ),
                                 focusedBorder: const UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.white),
+                                  borderSide: BorderSide(color: Colors.black),
                                 ),
                               ),
                             ),
@@ -191,9 +300,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               alignment: Alignment.centerRight,
                               child: TextButton(
                                 onPressed: () {},
-                                child: Text(
+                                child: const Text(
                                   'Forgot password?',
-                                  style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                                  style: TextStyle(color: Colors.grey, fontSize: 13),
                                 ),
                               ),
                             ),
@@ -206,9 +315,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   width: 24,
                                   child: Checkbox(
                                     value: _rememberMe,
-                                    activeColor: Colors.white,
-                                    checkColor: Colors.black,
-                                    side: BorderSide(color: const Color.fromARGB(255, 10, 10, 10)!),
+                                    activeColor: Colors.black,
+                                    checkColor: Colors.white,
+                                    side: const BorderSide(color: Colors.grey),
                                     onChanged: (value) {
                                       setState(() {
                                         _rememberMe = value ?? false;
@@ -217,14 +326,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
+                                const Text(
                                   'Remember me',
-                                  style: TextStyle(color: const Color.fromARGB(255, 9, 9, 9), fontSize: 14),
+                                  style: TextStyle(color: Colors.black, fontSize: 14),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 35),
-
+                            const SizedBox(height: 25),
                           ],
                         ),
                       ),

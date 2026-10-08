@@ -12,7 +12,8 @@ Future<void> main() async {
   // Khởi tạo kết nối với Supabase
   await Supabase.initialize(
     url: 'https://fnirmgvwsdvbcwevhhfx.supabase.co', // URL dự án của bạn
-    publishableKey: 'sb_publishable_G8C8TTehw-_sYzP4kSXixQ_2atfw3Igi',
+    publishableKey: 'sb_publishable_G8C8TTehw-_sYzP4kSXixQ_2atfw3Ig',
+    
   );
 
   runApp(const MyApp());
