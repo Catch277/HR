@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 
+import { asArray, asArrayField } from "@/lib/asArray";
 import type {
   Notification,
   PaginatedNotifications,
@@ -117,9 +118,15 @@ export default function NotificationsPage() {
         };
       }
 
+      // The page endpoint answers `{ data, total, page, page_size }`; read it defensively so a shape
+      // change shows an empty state instead of crashing the feed.
       const payload = (await response.json()) as PaginatedNotifications;
 
-      return { data: payload.data, total: payload.total, error: null };
+      return {
+        data: asArrayField<Notification>(payload, "data"),
+        total: typeof payload.total === "number" ? payload.total : 0,
+        error: null,
+      };
     }
 
     load()
@@ -191,7 +198,7 @@ export default function NotificationsPage() {
 
       const data = (await response.json()) as NotificationSetting[];
 
-      return { settings: Array.isArray(data) ? data : [], error: null };
+      return { settings: asArray<NotificationSetting>(data), error: null };
     }
 
     load()

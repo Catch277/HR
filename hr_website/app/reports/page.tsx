@@ -13,9 +13,11 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { asArray } from "@/lib/asArray";
 import type { Branch } from "@/lib/domain/entities/Branch";
 import type {
   RevenueReportPeriod,
+  RevenueReportPoint,
   RevenueReportResult,
 } from "@/lib/domain/entities/RevenueReport";
 import { getBusinessDay } from "@/lib/usecases/businessDay";
@@ -67,7 +69,7 @@ export default function ReportsPage() {
       .then((response) => (response.ok ? response.json() : []))
       .then((data: Branch[]) => {
         if (!cancelled) {
-          setBranches(Array.isArray(data) ? data : []);
+          setBranches(asArray<Branch>(data));
         }
       })
       .catch(() => undefined);
@@ -145,7 +147,7 @@ export default function ReportsPage() {
     setReloadToken((token) => token + 1);
   }
 
-  const series = report?.series ?? [];
+  const series = asArray<RevenueReportPoint>(report?.series);
   const summary = report?.summary ?? null;
   const comparison = report?.comparison ?? null;
   const maxRevenue = series.reduce(

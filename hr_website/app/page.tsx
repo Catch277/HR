@@ -11,10 +11,14 @@ import {
   Users,
 } from "lucide-react";
 
+import { asArray, asArrayField } from "@/lib/asArray";
 import type { Attendance } from "@/lib/domain/entities/Attendance";
 import type { EmployeeStatus } from "@/lib/domain/entities/EmployeeStatus";
 import type { RequestEntity } from "@/lib/domain/entities/RequestEntity";
-import type { RevenueReportResult } from "@/lib/domain/entities/RevenueReport";
+import type {
+  RevenueReportPoint,
+  RevenueReportResult,
+} from "@/lib/domain/entities/RevenueReport";
 import { getBusinessDay } from "@/lib/usecases/businessDay";
 
 const REQUEST_STATUS_LABELS: Record<string, string> = {
@@ -59,8 +63,17 @@ function formatDateTime(value: string): string {
   }).format(parsed);
 }
 
+/** `/api/employee-status` answers the snapshot the giám sát screen polls, not a bare array. */
+type EmployeeStatusSnapshot = {
+  updated_at: string;
+  work_date: string;
+  data: EmployeeStatus[];
+};
+
 type DashboardData = {
   roster: EmployeeStatus[];
+  /** The business day the API answered for (Asia/Bangkok); empty when that call failed. */
+  workDate: string;
   requests: RequestEntity[];
   attendance: Attendance[];
   report: RevenueReportResult | null;
@@ -69,6 +82,7 @@ type DashboardData = {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData>({
     roster: [],
+    workDate: "",
     requests: [],
     attendance: [],
     report: null,
@@ -101,15 +115,20 @@ export default function Dashboard() {
         attendanceResponse.ok ? "" : "bảng công hôm nay",
       ].filter(Boolean);
 
+      // `/api/employee-status` answers `{ updated_at, work_date, data }`; the other three answer bare
+      // arrays. `asArray`/`asArrayField` keep a surprise body from throwing while the page renders.
+      const snapshot = rosterResponse.ok
+        ? ((await rosterResponse.json()) as EmployeeStatusSnapshot)
+        : null;
+
       return {
-        roster: rosterResponse.ok
-          ? ((await rosterResponse.json()) as EmployeeStatus[])
-          : [],
+        roster: asArrayField<EmployeeStatus>(snapshot, "data"),
+        workDate: snapshot?.work_date ?? "",
         requests: requestsResponse.ok
-          ? ((await requestsResponse.json()) as RequestEntity[])
+          ? asArray<RequestEntity>(await requestsResponse.json())
           : [],
         attendance: attendanceResponse.ok
-          ? ((await attendanceResponse.json()) as Attendance[])
+          ? asArray<Attendance>(await attendanceResponse.json())
           : [],
         report: reportResponse.ok
           ? ((await reportResponse.json()) as RevenueReportResult)
@@ -131,6 +150,7 @@ export default function Dashboard() {
 
         setData({
           roster: result.roster,
+          workDate: result.workDate,
           requests: result.requests,
           attendance: result.attendance,
           report: result.report,
@@ -163,13 +183,19 @@ export default function Dashboard() {
   const onTimeCount = data.attendance.filter((row) => row.status === "ON_TIME").length;
   const lateCount = data.attendance.filter((row) => row.status === "LATE").length;
   const recentRequests = data.requests.slice(0, 6);
-  const series = data.report?.series ?? [];
+  const series = asArray<RevenueReportPoint>(data.report?.series);
   const maxRevenue = series.reduce(
     (max, point) => Math.max(max, point.total_revenue_amount),
     0,
   );
-  const monthRevenue = data.report?.summary.total_revenue_amount ?? 0;
+  // Read the summary through a local: `data.report?.summary.total_revenue_amount` would throw if the
+  // report body ever came back as something other than the documented object.
+  const summary = data.report?.summary ?? null;
+  const monthRevenue = summary?.total_revenue_amount ?? 0;
   const comparison = data.report?.comparison ?? null;
+  // Prefer the business day the API answered for; the local computation is the fallback when that
+  // call failed, so the header always names a date.
+  const businessDate = data.workDate || today;
 
   return (
     <div className="space-y-5">
@@ -180,8 +206,8 @@ export default function Dashboard() {
           </p>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tổng quan</h1>
           <p className="mt-1 text-xs text-slate-500">
-            Ngày làm việc {today} (giờ Việt Nam) — số liệu lấy trực tiếp từ bảng công, đơn từ và
-            doanh thu.
+            Ngày làm việc {businessDate} (giờ Việt Nam) — số liệu lấy trực tiếp từ bảng công, đơn
+            từ và doanh thu.
           </p>
         </div>
         <button
@@ -367,7 +393,7 @@ export default function Dashboard() {
                 <span>{series[0]?.bucket_start}</span>
                 <span>
                   {series.length} ngày có doanh thu ·{" "}
-                  {data.report?.summary.record_count ?? 0} ca đã chốt
+                  {summary?.record_count ?? 0} ca đã chốt
                 </span>
                 <span>{series[series.length - 1]?.bucket_start}</span>
               </div>

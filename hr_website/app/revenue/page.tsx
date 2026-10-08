@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { asArray } from "@/lib/asArray";
 import type { Branch } from "@/lib/domain/entities/Branch";
 import type { RevenueRecord } from "@/lib/domain/entities/RevenueRecord";
 import { getBusinessDay } from "@/lib/usecases/businessDay";
@@ -96,7 +97,7 @@ export default function RevenuePage() {
           return;
         }
 
-        const list = Array.isArray(data) ? data : [];
+        const list = asArray<Branch>(data);
         setBranches(list);
         setBranchId((current) => current || (list[0]?.id ?? ""));
       })
@@ -135,7 +136,10 @@ export default function RevenuePage() {
         };
       }
 
-      return { records: (await response.json()) as RevenueRecord[], error: null };
+      return {
+        records: asArray<RevenueRecord>(await response.json()),
+        error: null,
+      };
     }
 
     load()
