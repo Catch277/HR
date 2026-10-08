@@ -820,6 +820,54 @@ export function getApiDocs() {
               },
             },
           },
+          KnowledgeSourceSummary: {
+            type: "object",
+            required: ["title", "chunks"],
+            properties: {
+              title: {
+                type: "string",
+                description:
+                  "Tiêu đề tài liệu (cột `title` của `company_documents` / `user_contracts`; RPC `match_*` trả về nó dưới tên `document_name`).",
+              },
+              chunks: {
+                type: "integer",
+                description:
+                  "Số đoạn đã nhúng vector cho tài liệu này — cận dưới khi `truncated` = true.",
+              },
+            },
+          },
+          KnowledgeCorpus: {
+            type: "object",
+            required: ["totalChunks", "documents", "truncated"],
+            properties: {
+              totalChunks: {
+                type: "integer",
+                description: "Tổng số đoạn trong kho (đếm chính xác bằng `count: exact`).",
+              },
+              documents: {
+                type: "array",
+                description: "Bảng kê theo tài liệu, nhiều đoạn nhất trước.",
+                items: { $ref: "#/components/schemas/KnowledgeSourceSummary" },
+              },
+              truncated: {
+                type: "boolean",
+                description:
+                  "true khi bảng kê chỉ đọc được một phần số đoạn, lúc đó `chunks` là cận dưới.",
+              },
+            },
+          },
+          KnowledgeSources: {
+            type: "object",
+            required: ["companyDocuments", "userContracts"],
+            properties: {
+              companyDocuments: {
+                $ref: "#/components/schemas/KnowledgeCorpus",
+              },
+              userContracts: {
+                $ref: "#/components/schemas/KnowledgeCorpus",
+              },
+            },
+          },
           Facility: {
             type: "object",
             required: [

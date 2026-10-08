@@ -199,6 +199,7 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `POST /api/organizations/accounts/password` | session + role | Edge Function (service role) | Body `{ user_id, password }` → replaces a member's temporary password; the function refuses any account outside the caller's organization (`403`) |
 | `POST /api/auth/change-password`     | session           | Supabase Auth + `complete_password_change` | Body `{ password }` → the caller's own new password (no service role) and clears `must_change_password`, which is what the `/change-password` gate reads |
 | `POST /api/chat/ask`                 | session           | Gemini + vector RPCs          | Body `{ question }` → `{ answer, sources[] }`; answers only from retrieved internal documents                                                        |
+| `GET /api/chat/sources`              | session           | `company_documents` + `user_contracts` | What the assistant can read: `{ companyDocuments, userContracts }`, each `{ totalChunks, documents[], truncated }` — the corpus check behind the Trợ lý AI screen's "Nguồn tri thức" panel |
 | `GET /api/swagger`                   | —                 | generated spec                | Serves `public/swagger.json`                                                                                                                         |
 
 Status conventions: `400` invalid input, `401` no session, `403` not allowed (for example a role that
@@ -346,6 +347,18 @@ Rules for new database work:
 The models are pinned, not aliased: `text-embedding-004` and `gemini-1.5-flash` now answer `404`
 ("no longer available") and the `gemini-flash-latest` alias measured 2/4 calls failing with `503
 high demand`. Verify a candidate with `GET /v1beta/models?key=…` before switching.
+
+**Where the assistant gets its information from:** exactly two tables — `company_documents`
+(company-wide, columns `id, content, embedding, title, created_at`) and `user_contracts` (rows scoped to
+the caller by `user_id`, same columns). `GET /api/chat/sources` reports both, and the screen's "Nguồn
+tri thức" panel renders it: total chunks plus the document titles with their chunk counts. When both are
+empty every question legitimately answers "Tôi không có thông tin về vấn đề này…", because the prompt
+forbids answering outside the retrieved context. Nothing in this repo creates or fills those tables, so
+an empty corpus is a data task: chunk the source text, embed each chunk with `gemini-embedding-001` at
+**768 dims** (`outputDimensionality: 768`, matching the vector columns the old model produced) and
+insert `{ content, title, embedding }`. Check the real column types and row counts in the SQL Editor —
+`select count(*) from public.company_documents;` and
+`select format_type(atttypid, atttypmod) from pg_attribute where attrelid = 'public.company_documents'::regclass and attname = 'embedding';`.
 
 Model names, the prompt and that fallback sentence live in
 `lib/infrastructure/GeminiLLMService.ts`; changing them is a product decision (it costs money and changes

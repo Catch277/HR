@@ -1394,6 +1394,63 @@
           }
         }
       },
+      "KnowledgeSourceSummary": {
+        "type": "object",
+        "required": [
+          "title",
+          "chunks"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Tiêu đề tài liệu (cột `title` của `company_documents` / `user_contracts`; RPC `match_*` trả về nó dưới tên `document_name`)."
+          },
+          "chunks": {
+            "type": "integer",
+            "description": "Số đoạn đã nhúng vector cho tài liệu này — cận dưới khi `truncated` = true."
+          }
+        }
+      },
+      "KnowledgeCorpus": {
+        "type": "object",
+        "required": [
+          "totalChunks",
+          "documents",
+          "truncated"
+        ],
+        "properties": {
+          "totalChunks": {
+            "type": "integer",
+            "description": "Tổng số đoạn trong kho (đếm chính xác bằng `count: exact`)."
+          },
+          "documents": {
+            "type": "array",
+            "description": "Bảng kê theo tài liệu, nhiều đoạn nhất trước.",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSourceSummary"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "true khi bảng kê chỉ đọc được một phần số đoạn, lúc đó `chunks` là cận dưới."
+          }
+        }
+      },
+      "KnowledgeSources": {
+        "type": "object",
+        "required": [
+          "companyDocuments",
+          "userContracts"
+        ],
+        "properties": {
+          "companyDocuments": {
+            "$ref": "#/components/schemas/KnowledgeCorpus"
+          },
+          "userContracts": {
+            "$ref": "#/components/schemas/KnowledgeCorpus"
+          }
+        }
+      },
       "Facility": {
         "type": "object",
         "required": [
@@ -4145,6 +4202,47 @@
           },
           "500": {
             "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sources": {
+      "get": {
+        "summary": "Liệt kê kho tri thức mà trợ lý AI tra cứu được",
+        "description": "Trả về đúng hai kho mà `POST /api/chat/ask` đọc: tài liệu công ty (`company_documents`) và\nhợp đồng của chính người gọi (`user_contracts`, lọc theo `user_id`). RLS quyết định phần nhìn\nthấy được — giống hệt khi trả lời, nên đây là câu trả lời cho \"trợ lý lấy thông tin từ đâu\".\n\nNếu `totalChunks` bằng 0 ở cả hai kho thì mọi câu hỏi sẽ nhận câu trả lời\n*\"Tôi không có thông tin về vấn đề này…\"*, vì trợ lý chỉ trả lời dựa trên hai kho này.\n",
+        "tags": [
+          "Chat AI"
+        ],
+        "responses": {
+          "200": {
+            "description": "Kho tri thức nhìn thấy được từ session hiện tại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSources"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Người dùng chưa đăng nhập hoặc session hết hạn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ khi đọc kho tri thức.",
             "content": {
               "application/json": {
                 "schema": {

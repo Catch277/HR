@@ -19,6 +19,10 @@ import {
 } from "lucide-react";
 
 import type { DocumentChunk } from "@/lib/domain/entities/ChatMessage";
+import type {
+  KnowledgeCorpus,
+  KnowledgeSources,
+} from "@/lib/domain/entities/KnowledgeSource";
 
 /** Câu hỏi gợi ý: đều là câu hỏi về quy chế/tài liệu nội bộ — đúng phạm vi trợ lý tra cứu được. */
 const SUGGESTED_QUESTIONS = [
@@ -62,12 +66,101 @@ function errorMessageFor(status: number, serverMessage?: string): string {
   );
 }
 
+/** Bảng kê một kho tri thức: tổng số đoạn và vài tài liệu nhiều đoạn nhất. */
+function CorpusList({ label, corpus }: { label: string; corpus: KnowledgeCorpus }) {
+  const visible = corpus.documents.slice(0, 4);
+  const hidden = corpus.documents.length - visible.length;
+
+  return (
+    <div>
+      <p className="font-semibold text-slate-700">
+        {label} · {corpus.totalChunks} đoạn{corpus.truncated ? " (một phần)" : ""}
+      </p>
+      {corpus.totalChunks === 0 ? (
+        <p className="mt-0.5 text-slate-400">Chưa có tài liệu nào.</p>
+      ) : (
+        <ul className="mt-0.5 space-y-0.5">
+          {visible.map((document) => (
+            <li key={document.title} className="flex items-start justify-between gap-2">
+              <span className="truncate" title={document.title}>
+                {document.title}
+              </span>
+              <span className="shrink-0 tabular-nums text-slate-400">
+                {document.chunks}
+              </span>
+            </li>
+          ))}
+          {hidden > 0 && <li className="text-slate-400">và {hidden} tài liệu khác…</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [copiedId, setCopiedId] = useState("");
+  const [sources, setSources] = useState<KnowledgeSources | null>(null);
+  const [sourcesError, setSourcesError] = useState("");
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesReloadToken, setSourcesReloadToken] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Đọc kho tri thức để trả lời "trợ lý lấy thông tin từ đâu": đúng hai bảng mà `/api/chat/ask` đọc.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load(): Promise<{
+      sources: KnowledgeSources | null;
+      error: string | null;
+    }> {
+      const response = await fetch("/api/chat/sources", { cache: "no-store" });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        return {
+          sources: null,
+          error: errorMessageFor(response.status, data?.error),
+        };
+      }
+
+      return { sources: (await response.json()) as KnowledgeSources, error: null };
+    }
+
+    load()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        setSources(result.sources);
+        setSourcesError(result.error ?? "");
+        setSourcesLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setSourcesError("Không đọc được kho tri thức.");
+        setSourcesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sourcesReloadToken]);
+
+  function refreshSources() {
+    setSourcesLoading(true);
+    setSourcesError("");
+    setSourcesReloadToken((token) => token + 1);
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -246,6 +339,42 @@ export default function ChatPage() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section className="border-t border-slate-100 pt-3">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <h2 className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                Nguồn tri thức
+              </h2>
+              <button
+                type="button"
+                onClick={refreshSources}
+                disabled={sourcesLoading}
+                title="Đọc lại kho tri thức"
+                className="text-slate-400 hover:text-[#0C66E4] disabled:opacity-50"
+              >
+                <RotateCw size={12} className={sourcesLoading ? "animate-spin" : ""} />
+              </button>
+            </div>
+
+            {sourcesError ? (
+              <p className="px-1 text-[9px] leading-relaxed text-rose-600">{sourcesError}</p>
+            ) : sources === null ? (
+              <p className="px-1 text-[9px] text-slate-400">Đang đọc kho tri thức…</p>
+            ) : sources.companyDocuments.totalChunks + sources.userContracts.totalChunks ===
+              0 ? (
+              <p className="px-1 text-[9px] leading-relaxed text-amber-700">
+                Kho tri thức đang <b>trống</b>: trợ lý chưa có gì để tra cứu nên mọi câu hỏi đều
+                nhận câu trả lời &ldquo;chưa có thông tin&rdquo;. Cần nhúng nội dung tài liệu vào{" "}
+                <code className="rounded bg-slate-100 px-1">company_documents</code> và hợp đồng
+                vào <code className="rounded bg-slate-100 px-1">user_contracts</code>.
+              </p>
+            ) : (
+              <div className="space-y-2 px-1 text-[9px] leading-relaxed text-slate-500">
+                <CorpusList label="Tài liệu công ty" corpus={sources.companyDocuments} />
+                <CorpusList label="Hợp đồng của bạn" corpus={sources.userContracts} />
+              </div>
+            )}
           </section>
 
           <section className="border-t border-slate-100 pt-3">

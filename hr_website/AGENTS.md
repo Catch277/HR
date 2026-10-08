@@ -357,6 +357,13 @@ that must not live in SQL).
   `users_update_managers` limits writes to `OWNER`/`CHU`, and `UpdateStaffUseCase` adds the rules the database
   cannot express (only an `OWNER` touches the `OWNER` role; nobody edits their own row). Accounts are still
   created by signing up — a service-role admin API is deliberately not used.
+- The chat module reads exactly two tables — `company_documents` (`id, content, embedding, title,
+  created_at`) and `user_contracts` (same columns plus `user_id`, scoped to the caller). They are not
+  created by any script here, and in the current project they are **empty**, which is why every answer is
+  the fixed "Tôi không có thông tin về vấn đề này…" sentence from the prompt: with no retrieved context
+  the model is forbidden to invent one. `GET /api/chat/sources` + the "Nguồn tri thức" panel on `/chat`
+  exist so that this is visible in the product instead of being guessed at. Embed chunks with
+  `gemini-embedding-001` pinned to **768 dims** to match those `vector(768)` columns.
 - Attendance is split by device: the mobile app inserts the check-in (GPS point, photo) and the web app
   only reviews it. `attendance_guard_self_update` (SCRUM-21) therefore blocks an employee from editing
   their own check-in facts even though RLS lets them complete the record — do not "fix" that by widening
