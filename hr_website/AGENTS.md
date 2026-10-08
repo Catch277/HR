@@ -210,7 +210,10 @@ that must not live in SQL).
 - New screens are `app/<segment>/page.tsx`; register them in `components/Sidebar.tsx` (lucide-react icon
   + Vietnamese label) so navigation stays complete (add it to `SHELL_LESS_PATHS` in
   `lib/publicPaths.ts` instead when it must render without the navigation, as `/onboarding` and
-  `/change-password` do). `app/layout.tsx` owns the shell and the
+  `/change-password` do). A screen that is a one-off setup step rather than a daily destination belongs
+  in neither list: `/organization` is reached from onboarding and from the organization card in the
+  sidebar footer, and `proxy.ts` redirects an account without an organization to `/onboarding`, so the
+  card link serves the owner and the newcomer alike. `app/layout.tsx` owns the shell and the
   Be Vietnam Pro font; only add `"use client"` when state, effects or browser APIs are used.
 - Tailwind CSS v4 (no `tailwind.config.*`; the PostCSS plugin is `@tailwindcss/postcss`). Reuse the
   existing visual language: primary `#0C66E4` with `blue-50` tints, surfaces `#F8F9FF`/`#F3F6FC`,
@@ -312,6 +315,12 @@ that must not live in SQL).
   `proxy.ts` owns the two onboarding redirects (`/onboarding` while the account has no organization,
   `/change-password` while `must_change_password` is set) and skips them when the `users` row or those
   columns are missing, so a half-applied database cannot lock everyone out.
+- The two policy helpers — `public.current_organization_id()` and `public.is_organization_manager()` —
+  must stay **`security definer`** (SCRUM-54). Both read `public.users`, and the `users` policies call
+  them, so as invoker functions the policy re-enters itself on the inner read and every profile read
+  fails with `stack depth limit exceeded`; the same error silently disables the `/onboarding` redirect,
+  which is what makes the organization feature look missing after login. Never "simplify" them back to
+  invoker, and never inline a `select … from public.users` into a policy on `users`.
 - Rewriting a policy must only ever *add* to the original condition. Re-creating one from memory and
   dropping a clause (`status = 'PENDING'`, `employee_id = auth.uid()`, the role check) is a silent
   security regression that no typecheck or lint will catch — read the previous definition first, and

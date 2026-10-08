@@ -4,8 +4,8 @@ import {
   Bell,
   Bot,
   Building2,
+  ChevronRight,
   CircleDollarSign,
-  Clock3,
   FileText,
   CalendarRange,
   Landmark,
@@ -24,7 +24,6 @@ import { isPublicPath, isShellLessPath } from "@/lib/publicPaths";
 
 const navItems = [
   { name: "Tổng quan", href: "/", icon: LayoutDashboard },
-  { name: "Tổ chức", href: "/organization", icon: Landmark },
   { name: "Quản lý chi nhánh", href: "/branches", icon: Building2 },
   { name: "Cơ sở vật chất", href: "/facilities", icon: PackageSearch },
   { name: "Doanh thu", href: "/revenue", icon: CircleDollarSign },
@@ -124,22 +123,33 @@ export default function Sidebar() {
         })}
       </div>
 
-      <div className="m-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-3">
+      {/*
+        The organization screen is deliberately not a navigation tab (SCRUM-51): setup happens once,
+        right after login, and lives in `/onboarding`. This card is how the owner gets back to it,
+        and the redirect in `proxy.ts` sends an account without an organization to `/onboarding`
+        instead — so the same link serves both cases.
+      */}
+      <Link
+        href="/organization"
+        className="m-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-3 transition-colors hover:border-blue-200 hover:bg-[#E8EFFF]"
+      >
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
           <Landmark size={14} className="text-[#0C66E4]" />
           <span className="truncate">
             {organization?.organization?.name ?? "Chưa có tổ chức"}
           </span>
+          <ChevronRight size={14} className="ml-auto shrink-0 text-slate-400" />
         </div>
         <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
-          {organization ? (
+          {organization?.organization ? (
             <>
               <UsersRound size={12} />
               {organization.member_count} thành viên
             </>
           ) : (
             <>
-              <Clock3 size={12} /> Ca chính: 08:00 - 17:30
+              <Landmark size={12} />
+              Nhấn để tạo hoặc tham gia tổ chức
             </>
           )}
         </p>
@@ -147,7 +157,7 @@ export default function Sidebar() {
           Bản phát hành{" "}
           <span className="float-right font-medium text-slate-700">v2.5</span>
         </p>
-      </div>
+      </Link>
     </aside>
   );
 }

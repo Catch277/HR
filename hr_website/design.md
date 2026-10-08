@@ -492,7 +492,6 @@ Current `Sidebar` order (module → route → icon):
 | Label (vi) | Route | Icon |
 | --- | --- | --- |
 | Tổng quan | `/` | `LayoutDashboard` |
-| Tổ chức | `/organization` | `Landmark` |
 | Quản lý chi nhánh | `/branches` | `Building2` |
 | Cơ sở vật chất | `/facilities` | `PackageSearch` |
 | Doanh thu | `/revenue` | `CircleDollarSign` |
@@ -509,6 +508,13 @@ Sibling screens outside the sidebar: `/login` (sign-in — it hides the shell), 
 (self-registration — hides the shell too, same card recipe with a fourth "Xác nhận mật khẩu" field),
 `/api-docs` (Swagger UI). Both are listed in `lib/publicPaths.ts`, which is what `proxy.ts`, `Header`
 and `Sidebar` read.
+
+The organization screen (`/organization`, SCRUM-51/52) is intentionally **not** a navigation entry: it
+is a one-off setup step, so the sidebar's organization card (`Landmark` + name + member count) links to
+it, and `proxy.ts` sends an account without an organization to `/onboarding` instead — the same link
+therefore works for the owner (manage code and accounts) and for a newcomer (create or join). Onboarding
+screens hide the navigation through `SHELL_LESS_PATHS` while keeping the header, so the account can
+still sign out.
 
 Screens required by the in-flight epics, following the same header/card/badge language:
 
