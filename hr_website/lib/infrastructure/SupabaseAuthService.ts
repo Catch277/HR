@@ -85,5 +85,16 @@ export class SupabaseAuthService implements IAuthService {
       throw new Error(`Unable to sign out: ${error.message}`);
     }
   }
+
+  async updatePassword(password: string): Promise<void> {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.auth.updateUser({ password });
+
+    if (error) {
+      // Weak passwords come back as a 422 from Supabase Auth; the use case catches the length
+      // problem before this, so anything here is worth surfacing verbatim.
+      throw new Error(`Unable to change the password: ${error.message}`);
+    }
+  }
 }
 

@@ -83,4 +83,13 @@ export class SupabaseUserRepository implements IUserRepository {
 
     return toStaffMember(data as StaffRow);
   }
+
+  async completePasswordChange(): Promise<void> {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.rpc("complete_password_change");
+
+    if (error) {
+      throw new Error(`Unable to complete the password change: ${error.message}`);
+    }
+  }
 }

@@ -10,4 +10,9 @@ export interface IUserRepository {
   findAll(): Promise<StaffMember[]>;
   /** Changes a role and/or the employment state of one account. */
   update(id: string, input: UpdateStaffInput): Promise<StaffMember>;
+  /**
+   * Clears `must_change_password` for the calling account (SCRUM-52) through the narrow
+   * `complete_password_change` RPC: an employee cannot update their own `users` row otherwise.
+   */
+  completePasswordChange(): Promise<void>;
 }
