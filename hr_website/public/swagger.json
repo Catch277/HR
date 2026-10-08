@@ -27,6 +27,124 @@
           }
         }
       },
+      "AuthSession": {
+        "type": "object",
+        "required": [
+          "userId",
+          "email"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "AuthSignUpRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "full_name"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "nhanvien@humora.vn"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8,
+            "example": "CorrectHorseBatteryStaple"
+          },
+          "full_name": {
+            "type": "string",
+            "maxLength": 120,
+            "example": "Nguyễn Văn A"
+          }
+        }
+      },
+      "AuthSignUpResult": {
+        "type": "object",
+        "required": [
+          "userId",
+          "email",
+          "emailConfirmationRequired"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "emailConfirmationRequired": {
+            "type": "boolean",
+            "description": "true khi dự án Supabase bật xác nhận email: tài khoản đã tạo nhưng chưa có phiên đăng nhập."
+          }
+        }
+      },
+      "Branch": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "address",
+          "manager_id",
+          "latitude",
+          "longitude",
+          "attendance_radius",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "manager_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Chi nhánh trưởng (public.users.id)."
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "attendance_radius": {
+            "type": "integer",
+            "description": "Bán kính cho phép chấm công (mét) quanh toạ độ chi nhánh."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "RevenueRecord": {
         "type": "object",
         "required": [
@@ -97,12 +215,16 @@
         "required": [
           "id",
           "branch_id",
+          "user_id",
           "request_type",
+          "title",
+          "content",
           "status",
           "reject_reason",
           "approver_id",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "requester"
         ],
         "properties": {
           "id": {
@@ -111,75 +233,25 @@
           },
           "branch_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Chi nhánh liên quan (public.branches.id)."
           },
-          "request_type": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "reject_reason": {
-            "type": "string",
-            "nullable": true
-          },
-          "approver_id": {
+          "user_id": {
             "type": "string",
             "format": "uuid",
+            "description": "Nhân viên gửi đơn (public.users.id)."
+          },
+          "request_type": {
+            "type": "string",
+            "description": "Loại đơn: nghỉ phép, đổi ca, điều chỉnh công, ..."
+          },
+          "title": {
+            "type": "string",
             "nullable": true
           },
-          "created_at": {
+          "content": {
             "type": "string",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "MockRequest": {
-        "type": "object",
-        "required": [
-          "id",
-          "code",
-          "employeeName",
-          "role",
-          "type",
-          "branch",
-          "branchId",
-          "range",
-          "submitted",
-          "status",
-          "rejectReason"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "employeeName": {
-            "type": "string"
-          },
-          "role": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          },
-          "branchId": {
-            "type": "string"
-          },
-          "range": {
-            "type": "string"
-          },
-          "submitted": {
-            "type": "string"
+            "nullable": true
           },
           "status": {
             "type": "string",
@@ -189,106 +261,252 @@
               "REJECTED"
             ]
           },
-          "rejectReason": {
+          "reject_reason": {
             "type": "string",
             "nullable": true
+          },
+          "approver_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Người duyệt (lấy từ phiên đăng nhập)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requester": {
+            "type": "object",
+            "nullable": true,
+            "description": "Nhân viên nhúng từ khoá ngoại requests_user_id_fkey; null khi RLS ẩn hồ sơ.",
+            "required": [
+              "id",
+              "full_name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "full_name": {
+                "type": "string"
+              }
+            }
           }
         }
       },
-      "MockShift": {
+      "Shift": {
         "type": "object",
         "required": [
           "id",
-          "employeeId",
-          "employeeName",
-          "avatar",
-          "branchId",
-          "branch",
-          "date",
-          "dayLabel",
-          "shiftId",
-          "shiftLabel",
-          "start",
-          "end",
-          "status"
+          "name",
+          "branch_id",
+          "start_time",
+          "end_time"
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
-          "employeeId": {
-            "type": "string"
+          "name": {
+            "type": "string",
+            "description": "Tên ca làm việc (Ca sáng, Ca chiều, Nghỉ, ...)."
           },
-          "employeeName": {
-            "type": "string"
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "null nghĩa là ca áp dụng cho mọi chi nhánh."
           },
-          "avatar": {
-            "type": "string"
+          "start_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "Giờ bắt đầu (HH:MM:SS)."
           },
-          "branchId": {
-            "type": "string"
+          "end_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "Giờ kết thúc (HH:MM:SS)."
+          }
+        }
+      },
+      "ShiftAssignment": {
+        "type": "object",
+        "required": [
+          "id",
+          "employee_id",
+          "branch_id",
+          "shift_id",
+          "work_date",
+          "status",
+          "note",
+          "created_at",
+          "updated_at",
+          "employee",
+          "shift"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
           },
-          "branch": {
-            "type": "string"
+          "employee_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Nhân viên được xếp ca (public.users.id)."
           },
-          "date": {
-            "type": "string"
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Chi nhánh làm việc (public.branches.id)."
           },
-          "dayLabel": {
-            "type": "string"
+          "shift_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Ca làm việc được chọn (public.shifts.id)."
           },
-          "shiftId": {
-            "type": "string"
-          },
-          "shiftLabel": {
-            "type": "string"
-          },
-          "start": {
-            "type": "string"
-          },
-          "end": {
-            "type": "string"
+          "work_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Ngày làm việc (YYYY-MM-DD)."
           },
           "status": {
             "type": "string",
             "enum": [
               "SCHEDULED",
-              "LEAVE"
-            ]
+              "LEAVE",
+              "CANCELLED"
+            ],
+            "description": "Đi làm, nghỉ phép hoặc đã huỷ."
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "employee": {
+            "type": "object",
+            "nullable": true,
+            "description": "Nhân viên nhúng từ khoá ngoại; null khi RLS ẩn hồ sơ.",
+            "required": [
+              "id",
+              "full_name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "full_name": {
+                "type": "string"
+              }
+            }
+          },
+          "shift": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Shift"
+              }
+            ],
+            "nullable": true,
+            "description": "Ca làm việc nhúng từ khoá ngoại (kèm giờ để kiểm tra trùng ca)."
           }
         }
       },
-      "MockEmployeeStatus": {
+      "ShiftAssignmentWriteRequest": {
         "type": "object",
         "required": [
-          "id",
-          "name",
-          "role",
-          "branchId",
-          "branch",
-          "avatar",
-          "status",
-          "checkIn",
-          "location"
+          "employee_id",
+          "branch_id",
+          "shift_id",
+          "work_date"
         ],
         "properties": {
-          "id": {
-            "type": "string"
+          "employee_id": {
+            "type": "string",
+            "format": "uuid"
           },
-          "name": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shift_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "work_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "LEAVE",
+              "CANCELLED"
+            ],
+            "default": "SCHEDULED"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
+          }
+        }
+      },
+      "EmployeeStatus": {
+        "type": "object",
+        "required": [
+          "work_date",
+          "employee_id",
+          "full_name",
+          "role",
+          "branch_id",
+          "branch_name",
+          "status",
+          "shift_name",
+          "check_in_at",
+          "check_out_at",
+          "check_in_distance_m",
+          "attendance_radius"
+        ],
+        "properties": {
+          "work_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Ngày nghiệp vụ (Asia/Bangkok) mà bản ghi trạng thái mô tả."
+          },
+          "employee_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "full_name": {
             "type": "string"
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "description": "Vai trò hệ thống: OWNER, CHU hoặc EMPLOYEE."
           },
-          "branchId": {
-            "type": "string"
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           },
-          "branch": {
-            "type": "string"
-          },
-          "avatar": {
-            "type": "string"
+          "branch_name": {
+            "type": "string",
+            "nullable": true
           },
           "status": {
             "type": "string",
@@ -296,76 +514,229 @@
               "WORKING",
               "NOT_STARTED",
               "ON_LEAVE",
+              "FINISHED",
+              "NO_SHIFT",
               "RESIGNED"
-            ]
+            ],
+            "description": "Đang làm việc, chưa vào ca, nghỉ phép, đã tan ca, không có ca hôm nay, đã nghỉ việc."
           },
-          "checkIn": {
+          "shift_name": {
             "type": "string",
             "nullable": true
           },
-          "location": {
+          "check_in_at": {
             "type": "string",
+            "format": "date-time",
             "nullable": true
+          },
+          "check_out_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "check_in_distance_m": {
+            "type": "integer",
+            "nullable": true
+          },
+          "attendance_radius": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Bán kính cho phép của chi nhánh, để so với khoảng cách chấm công."
           }
         }
       },
-      "MockAttendance": {
+      "Attendance": {
         "type": "object",
         "required": [
           "id",
-          "employeeId",
-          "employeeName",
-          "avatar",
-          "branch",
-          "date",
-          "shift",
-          "checkIn",
-          "checkOut",
+          "employee_id",
+          "branch_id",
+          "shift_id",
+          "work_date",
+          "check_in_at",
+          "check_out_at",
+          "check_in_latitude",
+          "check_in_longitude",
+          "check_out_latitude",
+          "check_out_longitude",
+          "check_in_distance_m",
+          "check_in_photo_url",
+          "check_out_photo_url",
           "status",
-          "hours",
-          "complaint"
+          "note",
+          "complaint",
+          "complaint_at",
+          "verified_by",
+          "verified_at",
+          "created_at",
+          "updated_at",
+          "employee",
+          "branch",
+          "shift"
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
-          "employeeId": {
-            "type": "string"
+          "employee_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Nhân viên chấm công (public.users.id)."
           },
-          "employeeName": {
-            "type": "string"
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Chi nhánh làm việc (public.branches.id)."
           },
-          "avatar": {
-            "type": "string"
+          "shift_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Ca đã xếp; null khi làm ngoài lịch."
           },
-          "branch": {
-            "type": "string"
+          "work_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Ngày làm việc (YYYY-MM-DD)."
           },
-          "date": {
-            "type": "string"
+          "check_in_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           },
-          "shift": {
-            "type": "string"
+          "check_out_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           },
-          "checkIn": {
-            "type": "string"
+          "check_in_latitude": {
+            "type": "number",
+            "nullable": true
           },
-          "checkOut": {
-            "type": "string"
+          "check_in_longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "check_out_latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "check_out_longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "check_in_distance_m": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Khoảng cách (mét) từ điểm chấm công tới tâm chi nhánh, dùng để xét vùng hợp lệ. Database tính lại từ toạ độ nên không do client gửi."
+          },
+          "check_in_photo_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "check_out_photo_url": {
+            "type": "string",
+            "nullable": true
           },
           "status": {
             "type": "string",
             "enum": [
               "ON_TIME",
               "LATE",
-              "EARLY_LEAVE"
+              "EARLY_LEAVE",
+              "ABSENT",
+              "INCOMPLETE"
             ]
           },
-          "hours": {
-            "type": "number"
+          "note": {
+            "type": "string",
+            "nullable": true
           },
           "complaint": {
             "type": "string",
+            "nullable": true,
+            "description": "Khiếu nại của nhân viên (SCRUM-29)."
+          },
+          "complaint_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "verified_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Quản lý đã xác minh bản ghi."
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "employee": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "id",
+              "full_name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "full_name": {
+                "type": "string"
+              }
+            }
+          },
+          "branch": {
+            "type": "object",
+            "nullable": true,
+            "description": "Chi nhánh nhúng kèm toạ độ và bán kính để xét vùng chấm công.",
+            "required": [
+              "id",
+              "name",
+              "latitude",
+              "longitude",
+              "attendance_radius"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "latitude": {
+                "type": "number",
+                "nullable": true
+              },
+              "longitude": {
+                "type": "number",
+                "nullable": true
+              },
+              "attendance_radius": {
+                "type": "integer"
+              }
+            }
+          },
+          "shift": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Shift"
+              }
+            ],
             "nullable": true
           }
         }
@@ -791,6 +1162,147 @@
           }
         }
       },
+      "Facility": {
+        "type": "object",
+        "required": [
+          "id",
+          "branch_id",
+          "name",
+          "code",
+          "category",
+          "quantity",
+          "condition",
+          "last_checked_at",
+          "note",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Chi nhánh sở hữu thiết bị (public.branches.id)."
+          },
+          "name": {
+            "type": "string",
+            "example": "Máy pha cà phê Breville"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true,
+            "description": "Mã tài sản / số serial trên tem thiết bị."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "KITCHEN",
+              "COLD_STORAGE",
+              "FURNITURE",
+              "ELECTRICAL",
+              "CLEANING",
+              "OTHER"
+            ],
+            "description": "Nhóm thiết bị (Khu pha chế, Bảo quản lạnh, ...)."
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Số lượng thiết bị cùng loại tại chi nhánh."
+          },
+          "condition": {
+            "type": "string",
+            "enum": [
+              "GOOD",
+              "FAIR",
+              "MAINTENANCE",
+              "BROKEN"
+            ],
+            "description": "Tình trạng: tốt, cần theo dõi, đang sửa chữa, hỏng (SCRUM-46 xử lý bảo trì)."
+          },
+          "last_checked_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Ngày kiểm tra gần nhất (YYYY-MM-DD)."
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FacilityWriteRequest": {
+        "type": "object",
+        "required": [
+          "branch_id",
+          "name"
+        ],
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 60,
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "KITCHEN",
+              "COLD_STORAGE",
+              "FURNITURE",
+              "ELECTRICAL",
+              "CLEANING",
+              "OTHER"
+            ],
+            "default": "OTHER"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9999,
+            "default": 1
+          },
+          "condition": {
+            "type": "string",
+            "enum": [
+              "GOOD",
+              "FAIR",
+              "MAINTENANCE",
+              "BROKEN"
+            ],
+            "default": "GOOD"
+          },
+          "last_checked_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -850,239 +1362,37 @@
     },
     "/api/shifts": {
       "get": {
-        "summary": "Get shifts with optional filters",
+        "summary": "List shift templates",
+        "description": "Returns the shift catalogue (\"Ca sáng\" 08:00–17:00, \"Ca chiều\", ...) that\n`/api/schedules` assigns to employees. `branch_id = null` means the template applies to\nevery branch. SCRUM-30.\n\nThis endpoint used to serve the in-memory mock shift list; the schedule itself now lives\nin `public.shift_assignments` behind `/api/schedules`.\n",
         "tags": [
           "Shifts"
         ],
-        "parameters": [
-          {
-            "in": "query",
-            "name": "branch_id",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "start_date",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Inclusive lower bound compared lexically with shift dates."
-          },
-          {
-            "in": "query",
-            "name": "end_date",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Inclusive upper bound compared lexically with shift dates."
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Shifts matching the optional filters.",
+            "description": "The shift catalogue.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/MockShift"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create a shift",
-        "tags": [
-          "Shifts"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "employee_id",
-                  "date",
-                  "branch_id",
-                  "shift_id"
-                ],
-                "properties": {
-                  "employee_id": {
-                    "type": "string"
-                  },
-                  "date": {
-                    "type": "string"
-                  },
-                  "branch_id": {
-                    "type": "string"
-                  },
-                  "shift_id": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The created shift.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MockShift"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The JSON body is invalid or required fields are missing.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The shift data is invalid or overlaps with an existing shift.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/shifts/{id}": {
-      "patch": {
-        "summary": "Update a shift",
-        "tags": [
-          "Shifts"
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "employee_id": {
-                    "type": "string"
-                  },
-                  "date": {
-                    "type": "string"
-                  },
-                  "branch_id": {
-                    "type": "string"
-                  },
-                  "shift_id": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The updated shift.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MockShift"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The JSON body is invalid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The shift was not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The update data is invalid or overlaps with an existing shift.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete a shift",
-        "tags": [
-          "Shifts"
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The shift was deleted.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success"
-                  ],
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
+                    "$ref": "#/components/schemas/Shift"
                   }
                 }
               }
             }
           },
-          "404": {
-            "description": "The shift was not found.",
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1151,6 +1461,345 @@
           },
           "500": {
             "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/schedules": {
+      "get": {
+        "summary": "List shift assignments",
+        "description": "The week/day view of the schedule (SCRUM-30). Each row is one employee assigned to one\nshift template on one business date, with the employee name and the shift hours\nembedded so the screen needs a single request.\n",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employee_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive lower bound on `work_date`."
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive upper bound on `work_date`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The shift assignments, ordered by date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShiftAssignment"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A filter is not a UUID or not a calendar date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Schedule a shift",
+        "description": "Assigns one employee to one shift template on one business date. Answers `409` when the\nsame employee already has an overlapping shift that day (or the exact same template).\nRestricted to OWNER/CHU accounts by RLS.\n",
+        "tags": [
+          "Schedules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShiftAssignmentWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created shift assignment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftAssignment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The referenced shift template does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The employee already has an overlapping shift on that date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedules/{id}": {
+      "put": {
+        "summary": "Update a shift assignment",
+        "description": "Replaces the employee, branch, template, date, status and note of one assignment. Answers 409 on an overlap and 404 for an unknown or non-updatable row. SCRUM-30.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShiftAssignmentWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated shift assignment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftAssignment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID, or the request body is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The assignment or the referenced shift template was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The employee already has an overlapping shift on that date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a shift assignment",
+        "description": "Removes one assignment from the schedule. Restricted to OWNER/CHU accounts by RLS. SCRUM-30.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The assignment was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The assignment does not exist or is not deletable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1368,7 +2017,8 @@
     },
     "/api/requests": {
       "get": {
-        "summary": "Get requests with optional filters",
+        "summary": "List staff requests",
+        "description": "The approval queue of SCRUM-41: leave, shift-swap and adjustment requests with the\nrequester name embedded from `requests.user_id`. The value `all` disables a filter, which\nis what the dashboard pills send.\n",
         "tags": [
           "Requests"
         ],
@@ -1377,9 +2027,15 @@
             "in": "query",
             "name": "status",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "all"
+              ]
             },
-            "description": "Exact request status to filter by; \"all\" disables this filter."
+            "description": "Exact status to filter by; \"all\" disables this filter."
           },
           {
             "in": "query",
@@ -1387,19 +2043,49 @@
             "schema": {
               "type": "string"
             },
-            "description": "Exact branch ID to filter by; \"all\" disables this filter."
+            "description": "Branch UUID to filter by; \"all\" disables this filter."
           }
         ],
         "responses": {
           "200": {
-            "description": "Requests matching the optional filters.",
+            "description": "Requests matching the optional filters, most recently updated first.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/MockRequest"
+                    "$ref": "#/components/schemas/RequestEntity"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "branch_id is neither a UUID nor \"all\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1410,6 +2096,7 @@
     "/api/requests/{id}/review": {
       "patch": {
         "summary": "Approve or reject a request",
+        "description": "Sets `requests.status` together with `reject_reason` and `approver_id`. Restricted to\nOWNER/CHU accounts: the use case checks the caller's role and the\n`requests_update_managers` RLS policy (SCRUM-41) repeats the check in the database.\n",
         "tags": [
           "Requests"
         ],
@@ -1419,7 +2106,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
@@ -1442,6 +2130,8 @@
                   },
                   "reject_reason": {
                     "type": "string",
+                    "maxLength": 500,
+                    "nullable": true,
                     "description": "Required and non-empty when status is REJECTED."
                   }
                 }
@@ -1455,13 +2145,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MockRequest"
+                  "$ref": "#/components/schemas/RequestEntity"
                 }
               }
             }
           },
           "400": {
-            "description": "The JSON body or review data is invalid.",
+            "description": "The id is not a UUID, the body is invalid, or a rejection has no reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no user profile, or the role may not review requests.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1471,7 +2181,17 @@
             }
           },
           "404": {
-            "description": "The request was not found.",
+            "description": "The request does not exist or is not reviewable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1680,9 +2400,294 @@
         }
       }
     },
+    "/api/facilities": {
+      "get": {
+        "summary": "List facilities",
+        "description": "Returns the per-branch facilities visible to the authenticated caller under the active RLS policy, sorted by name. SCRUM-45.",
+        "tags": [
+          "Facilities"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Restrict the list to one branch."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The facility list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Facility"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "branch_id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a facility",
+        "description": "Registers one facility of a branch. Restricted to OWNER/CHU accounts by RLS.",
+        "tags": [
+          "Facilities"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacilityWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The facility was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Facility"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/facilities/{id}": {
+      "put": {
+        "summary": "Update a facility",
+        "description": "Replaces the editable fields of one facility. Restricted to OWNER/CHU accounts by RLS; a hidden or unknown id answers 404. SCRUM-45.",
+        "tags": [
+          "Facilities"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacilityWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated facility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Facility"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID, or the request body is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The facility does not exist or is not updatable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a facility",
+        "description": "Removes one facility from the registry. Restricted to OWNER/CHU accounts by RLS. SCRUM-45.",
+        "tags": [
+          "Facilities"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The facility was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The facility does not exist or is not deletable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/employee-status": {
       "get": {
-        "summary": "Get employee statuses with an optional branch filter",
+        "summary": "Get the live employee status of one business day",
+        "description": "One row per person for the day (SCRUM-22), derived from `shift_assignments` and\n`attendance` by the `get_employee_status` RPC: đang làm việc, chưa vào ca, nghỉ phép,\nđã tan ca, không có ca hôm nay or nghỉ việc. The day defaults to today in Asia/Bangkok.\n",
         "tags": [
           "Employees"
         ],
@@ -1691,19 +2696,31 @@
             "in": "query",
             "name": "branch_id",
             "schema": {
-              "type": "string"
-            }
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Only the people scheduled to, or checking in at, this branch."
+          },
+          {
+            "in": "query",
+            "name": "work_date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Business day to report (defaults to today in Asia/Bangkok)."
           }
         ],
         "responses": {
           "200": {
-            "description": "Employee statuses and the response generation timestamp.",
+            "description": "The snapshot and the day it describes.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
                     "updated_at",
+                    "work_date",
                     "data"
                   ],
                   "properties": {
@@ -1711,13 +2728,47 @@
                       "type": "string",
                       "format": "date-time"
                     },
+                    "work_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/MockEmployeeStatus"
+                        "$ref": "#/components/schemas/EmployeeStatus"
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "branch_id is not a UUID, or work_date is not a calendar date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1786,9 +2837,440 @@
         }
       }
     },
+    "/api/branches": {
+      "get": {
+        "summary": "List branches",
+        "description": "Returns every branch visible to the authenticated caller under the active RLS policy, sorted by name.",
+        "tags": [
+          "Branches"
+        ],
+        "responses": {
+          "200": {
+            "description": "The branch list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Branch"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a branch",
+        "description": "Creates a branch together with its GPS geofence. Restricted to OWNER/CHU accounts by RLS.",
+        "tags": [
+          "Branches"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "example": "Chi nhánh Quận 1 - Flagship Bến Thành"
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "nullable": true,
+                    "example": "128 Lê Lợi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh"
+                  },
+                  "manager_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90,
+                    "nullable": true,
+                    "example": 10.7725
+                  },
+                  "longitude": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "nullable": true,
+                    "example": 106.698
+                  },
+                  "attendance_radius": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 2000,
+                    "default": 50,
+                    "description": "Allowed check-in distance in metres (defaults to 50)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The branch was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/branches/{id}": {
+      "put": {
+        "summary": "Update a branch",
+        "description": "Replaces the editable fields of one branch (name, address, manager, GPS geofence). Restricted to OWNER/CHU accounts by RLS.",
+        "tags": [
+          "Branches"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The branch UUID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "nullable": true
+                  },
+                  "manager_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90,
+                    "nullable": true
+                  },
+                  "longitude": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "nullable": true
+                  },
+                  "attendance_radius": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 2000,
+                    "description": "Allowed check-in distance in metres. Keeps the current value when omitted."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated branch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The route parameter or request body is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "404": {
+            "description": "No branch exists with the supplied ID, or the caller may not update it."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      }
+    },
+    "/api/auth/sign-up": {
+      "post": {
+        "summary": "Create an internal account",
+        "description": "Creates a Supabase Auth account and, through the SCRUM-50 `on_auth_user_created` trigger, the matching `public.users` profile with the default role `EMPLOYEE`. When the Supabase project requires email confirmation, no session is created and the response says so.",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthSignUpRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The account was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSignUpResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The JSON body is invalid, or email/password/full_name failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An account already exists for this email address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sign-out": {
+      "post": {
+        "summary": "Sign out the current session",
+        "description": "Clears the Supabase Auth session cookies. Safe to call without an active session.",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "200": {
+            "description": "The session was cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sign-in": {
+      "post": {
+        "summary": "Sign in with email and password",
+        "description": "Exchanges email/password credentials for a Supabase Auth session and writes the session cookies onto the response.",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "hr.lead@humora.vn"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "CorrectHorseBatteryStaple"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The session was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The JSON body is invalid, or email/password is missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The email or password is incorrect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "summary": "Get the signed-in user profile",
+        "description": "Returns the `users` profile (full name and role) of the account behind the current Supabase Auth session, so the shell can label the header without a client-side join.",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "200": {
+            "description": "The profile of the signed-in account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The account has no row in the users table.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/attendance": {
       "get": {
-        "summary": "Get attendance records with optional filters",
+        "summary": "List attendance records",
+        "description": "The Bảng công timesheet (SCRUM-21/22/29). Each row embeds the employee name, the branch\n(with its GPS centre and allowed radius, so the screen can judge the geofence) and the\nshift hours. Check-in and check-out themselves happen in the mobile app.\n",
         "tags": [
           "Attendance"
         ],
@@ -1797,27 +3279,173 @@
             "in": "query",
             "name": "branch_id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
             "in": "query",
             "name": "employee_id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ON_TIME",
+                "LATE",
+                "EARLY_LEAVE",
+                "ABSENT",
+                "INCOMPLETE"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive lower bound on `work_date`."
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive upper bound on `work_date`."
           }
         ],
         "responses": {
           "200": {
-            "description": "Attendance records matching the optional filters.",
+            "description": "The attendance records, most recent work date first.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/MockAttendance"
+                    "$ref": "#/components/schemas/Attendance"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A filter is not a UUID, not a calendar date, or not a known status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/attendance/{id}/verify": {
+      "patch": {
+        "summary": "Verify an attendance record",
+        "description": "Stamps `verified_by` and `verified_at` on one record: this is the web review action of\nSCRUM-22 (toạ độ + ảnh xác minh + trạng thái hợp lệ). Restricted to OWNER/CHU accounts,\nand the `attendance_update_managers` RLS policy repeats the check in the database.\n",
+        "tags": [
+          "Attendance"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The verified attendance record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attendance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no user profile, or the role may not verify records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The record does not exist or is not verifiable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1827,7 +3455,8 @@
     },
     "/api/attendance/complaints": {
       "post": {
-        "summary": "Submit an attendance complaint",
+        "summary": "Record a complaint against an attendance record",
+        "description": "Stores the employee's khiếu nại (SCRUM-29) with the current timestamp. The employee on\nthe record may raise it themselves, and an OWNER/CHU manager may raise it for them (the\ncomplaint usually arrives by phone); anyone else is refused with `403`.\n",
         "tags": [
           "Attendance"
         ],
@@ -1843,10 +3472,13 @@
                 ],
                 "properties": {
                   "attendance_id": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uuid"
                   },
                   "complaint": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 500,
+                    "example": "Máy chấm công không nhận diện được khuôn mặt nên em vào ca muộn 10 phút."
                   }
                 }
               }
@@ -1855,17 +3487,37 @@
         },
         "responses": {
           "201": {
-            "description": "The updated attendance record.",
+            "description": "The attendance record with the complaint stored.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MockAttendance"
+                  "$ref": "#/components/schemas/Attendance"
                 }
               }
             }
           },
           "400": {
-            "description": "The JSON body is invalid or required fields are missing.",
+            "description": "The JSON body is invalid, or the complaint is empty or too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is neither the employee on the record nor an OWNER/CHU manager.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1875,7 +3527,17 @@
             }
           },
           "404": {
-            "description": "The attendance record was not found.",
+            "description": "The attendance record does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
             "content": {
               "application/json": {
                 "schema": {
