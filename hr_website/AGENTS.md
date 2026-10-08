@@ -316,10 +316,14 @@ that must not live in SQL).
   dropping a clause (`status = 'PENDING'`, `employee_id = auth.uid()`, the role check) is a silent
   security regression that no typecheck or lint will catch — read the previous definition first, and
   leave the verification query at the end of `SCRUM-53_tenant_scope.sql` in place.
-- `supabase/functions/**` is Deno, not Node: `tsconfig.json` excludes it from `npx tsc --noEmit` and it
-  imports `npm:` specifiers. The app reaches it only through `EdgeFunctionStaffProvisioningService`,
-  forwarding the caller's access token; the service-role key exists solely in that function's Supabase
-  secrets and must never appear in this repository or in a client.
+- `supabase/functions/**` is Deno, not Node: `tsconfig.json` excludes it from `npx tsc --noEmit`
+  (`deno.json` marks the folder as Deno) and it imports `npm:`/`jsr:` specifiers. An editor without the
+  Deno extension therefore reports `Cannot find name 'Deno'` and the unresolved specifier for it — known
+  and not real; do not "fix" it with `@ts-nocheck` (banned by the lint config) or with a shim that types
+  the service-role client loosely, which is how a fake check gets mistaken for a real one. The app reaches
+  it only through `EdgeFunctionStaffProvisioningService`, forwarding the caller's access token; the
+  service-role key exists solely in that function's Supabase secrets and must never appear in this
+  repository or in a client.
 - `lib/publicPaths.ts` has two lists: `PUBLIC_PATHS` (no session needed — `proxy.ts` redirects a
   signed-in visitor away) and `SHELL_LESS_PATHS` (`/onboarding`, `/change-password`: a session is
   required, the navigation is hidden because every link would bounce back, the header stays so the

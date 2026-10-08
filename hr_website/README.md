@@ -291,6 +291,12 @@ deliberately does not have. That single capability therefore lives in an Edge Fu
   Docker in this repository, so deploy it from the Dashboard: **Edge Functions → Create a new function →
   name it `staff-account` → paste the file → Deploy**. Keep JWT verification **ON**; `SUPABASE_URL` and
   `SUPABASE_SERVICE_ROLE_KEY` are supplied by the platform, and no secret is added to this app.
+- **Why it looks "wrong" in an editor:** that folder is Deno, not Node, so the root `tsconfig.json`
+  excludes `supabase/functions/**` from `npx tsc --noEmit` and the app's lint/type gates do not cover it
+  (`supabase/functions/deno.json` marks it as a Deno project). An editor without the Deno extension
+  reports `Cannot find name 'Deno'` and `Cannot find module 'jsr:@supabase/supabase-js@2'` for it — those
+  are not real errors. Install the Deno VS Code extension (or run `deno check
+  supabase/functions/staff-account/index.ts`) and they stop; the Edge runtime bundles the file at deploy.
 - **How it is called:** `POST /api/organizations/accounts` forwards the *caller's* access token, so the
   function authorizes the user (it re-reads their profile and requires `OWNER`/`CHU` of an organization)
   rather than trusting this app. The URL is derived from `NEXT_PUBLIC_SUPABASE_URL` as
@@ -303,7 +309,10 @@ deliberately does not have. That single capability therefore lives in an Edge Fu
   password, sets `must_change_password`, and writes the register row (`source = 'provisioned'`). The
   password is never stored or logged. It also serves `action: "reset_password"` for a member of the
   caller's own organization. Guardrails: field validation, JWT verification, the organization/role
-  check, and a 20-accounts-per-organization-per-hour limit.
+  check, and a 20-accounts-per-organization-per-hour limit. It refuses to hand over a login that cannot
+  work — if the `on_auth_user_created` trigger from `SCRUM-50_user_registration.sql` is missing, the
+  account would have no `public.users` row, so the function answers `500` telling you to apply that
+  script rather than returning `201`.
 
 Rules for new database work:
 

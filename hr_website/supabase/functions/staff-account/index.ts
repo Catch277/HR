@@ -1,5 +1,16 @@
 // SCRUM-52: create (or re-set the password of) a staff account for one organization.
 //
+// This file is **Deno**, not Node/Next.js. The repository's `tsconfig.json` excludes
+// `supabase/functions/**` from the app's `npx tsc --noEmit` on purpose, and `deno.json` next to it
+// marks the folder as a Deno project. Two consequences worth knowing:
+//
+//   - an editor without the Deno extension treats this file as Node and reports
+//     "Cannot find name 'Deno'" plus "Cannot find module 'jsr:@supabase/supabase-js@2'";
+//     they are not real errors. Installing the Deno VS Code extension (or `deno check`) removes
+//     them, because the folder then resolves as Deno.
+//   - the app's lint/type gates do not cover this file; the Edge runtime bundles it at deploy, and
+//     Deno is the authority for how it typechecks. Keep the code simple enough to review by eye.
+//
 // This is the only place in the whole stack that holds the service-role key, and it lives in
 // Supabase's own secrets — never in the web app, which forwards the *caller's* access token and
 // decides nothing. Because a service-role client bypasses RLS, the checks below are the entire
@@ -16,7 +27,9 @@
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY are provided by Supabase.
 // The web app calls it through POST /api/organizations/accounts (see EdgeFunctionStaffProvisioningService).
 
-import { createClient } from "npm:@supabase/supabase-js@2";
+// `npm:@supabase/supabase-js@2` works on the same runtime if you prefer it; `jsr:` is what the
+// Supabase templates use today and needs no npm resolution.
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -252,8 +265,30 @@ async function createAccount(
 
   const userId = created.user.id;
 
-  // The SCRUM-50 trigger has created the profile row by now. The account chooses its own password
-  // before the app opens, so the flag is set here.
+  // The SCRUM-50 trigger creates the profile row; without it the account would exist in Auth but
+  // have no `public.users` row, which every RLS policy and /api/auth/session depends on. Fail loudly
+  // instead of handing the owner a login that cannot see anything.
+  const { data: profile, error: profileError } = await admin
+    .from("users")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) {
+    return json({ error: `Unable to read the new profile: ${profileError.message}` }, 500);
+  }
+
+  if (!profile) {
+    return json(
+      {
+        error:
+          "The account was created but has no profile row: the `on_auth_user_created` trigger from SCRUM-50_user_registration.sql is missing. Apply that script, then delete the auth user and retry.",
+      },
+      500,
+    );
+  }
+
+  // The account chooses its own password before the app opens, so the flag is set here.
   const { error: flagError } = await admin
     .from("users")
     .update({ must_change_password: true })
