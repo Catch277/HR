@@ -61,11 +61,13 @@ Run from `hr_website/` with **npm** (the lockfile is `package-lock.json`).
 
 Before reporting work as complete, run `npx tsc --noEmit` (passes today) and lint the files you touched,
 e.g. `npx eslint app/api/revenue/report/route.ts lib/usecases/GetRevenueReportUseCase.ts`.
-Do **not** use a bare `npm run lint` as the gate: it currently reports ~6521 problems
-(1093 errors, 5428 warnings, exit 1) because the committed bundle output under
-`hr_website/hr_website/.next/**` gets linted (only the root-anchored `.next/**` is ignored) and four pages
-(`attendance`, `employee-status`, `requests`, `shifts`) carry pre-existing errors. Don't fix unrelated
-findings and don't silence them — a global ignore change or those page fixes is a separate, approved task.
+Do **not** use a bare `npm run lint` as the gate: on a clean tree it reports ~6,512 problems
+(1,088 errors, 5,424 warnings, exit 1) because the committed bundle output under
+`hr_website/hr_website/.next/**` gets linted (only the root-anchored `.next/**` is ignored). No page or
+route carries a lint error any more, so the count is not a quality signal about this app: untracked
+dev-server output in that same folder can double it — run `git clean -f -- hr_website/hr_website` before
+measuring. Don't fix unrelated findings and don't silence them — changing the ignore pattern is a
+separate, approved task.
 **There is no test runner in this repository** — never claim tests were run. Verify with the typecheck,
 targeted lint, the endpoint or page you changed and `/api-docs`. Adding a test runner, CI or Docker is an
 **ask first** change.
@@ -91,7 +93,7 @@ hr_website/
 │   ├── domain/repositories/      # I<Name>Repository / service interfaces
 │   ├── usecases/                 # One class per business action + businessDay.ts helper
 │   ├── infrastructure/           # supabaseClient.ts, Supabase*Repository.ts, GeminiLLMService.ts
-│   ├── mock/adminStore.ts        # In-memory demo data for not-yet-migrated admin screens
+│   ├── publicPaths.ts            # Screens rendered outside the shell (proxy.ts + Header/Sidebar)
 │   └── swagger.ts                # OpenAPI definition + shared component schemas
 ├── scripts/generate-swagger.ts   # Builds public/swagger.json; exits 1 when no paths are found
 ├── supabase/sql/SCRUM-*.sql      # Idempotent schema/RLS/RPC scripts applied by hand
@@ -101,12 +103,18 @@ hr_website/
 ## Route handler recipe
 
 Copy the shape of an existing Supabase-backed handler (`app/api/revenue/open/route.ts`) instead of
-inventing one. The admin demo routes (`requests`, `shifts`, `attendance`, `employee-status`) read and
-write `lib/mock/adminStore.ts` and deliberately skip the auth/use-case steps; when you migrate one of
-them to a real table, follow this recipe and add its `supabase/sql/SCRUM-*.sql` script.
+inventing one. Every route is Supabase-backed now — the in-memory mock store was deleted once the last
+screen (employee status) moved to the `get_employee_status` RPC — so a new resource follows this recipe
+end to end and adds its own `supabase/sql/SCRUM-*.sql` script. The reference implementations are
+`app/api/branches/route.ts` (shared `_lib` parser, write path), `app/api/schedules/route.ts` (embedded
+selects, `409` on a business conflict) and `app/api/attendance/route.ts` (many filters, RPC-backed sibling
+in `app/api/employee-status/route.ts`).
 
 1. Export `async function GET|POST|PUT|PATCH|DELETE(request: Request | NextRequest)` — default export
    is not allowed here. Respond only with `NextResponse.json(body, { status })`.
+   When two handlers of the same resource validate the same body, share the parser from a private folder
+   (`app/api/<resource>/_lib/<name>.ts` — `_folder` is opted out of routing) instead of duplicating it or
+   pushing HTTP parsing into a use case. `app/api/branches/_lib/branchRequest.ts` is the reference.
 2. Dynamic segments: `context: { params: Promise<{ id: string }> }`, then `const { id } = await context.params;`.
 3. Parse the body with a local request type whose fields are `unknown`:
    `try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }); }`
@@ -156,19 +164,26 @@ them to a real table, follow this recipe and add its `supabase/sql/SCRUM-*.sql` 
   "no row" is a normal outcome, `.single()` when the row must exist, `.range()`/`{ count: "exact" }`
   for pagination, and throw on `error`.
 - Aggregations and semantic search run through Supabase RPCs called from repositories:
-  `get_revenue_report`, `match_company_documents`, `match_user_contracts`.
+  `get_revenue_report`, `get_employee_status`, `match_company_documents`, `match_user_contracts`.
+  A reporting RPC must be `security invoker` (the default) so RLS still filters what the caller sees,
+  and its date default must be computed in Asia/Bangkok, not from `current_date`.
 - Schema, indexes, RLS policies, triggers and RPCs live as plain SQL in `supabase/sql/SCRUM-<n>_<name>.sql`
   and must be **run by hand** in Supabase Dashboard → SQL Editor (there is no migration runner or Supabase CLI here).
   New scripts are idempotent (`create table if not exists`, `drop policy if exists` before `create policy`),
   enable RLS and grant the narrowest policy. Never edit a script that has already been applied — add a new one.
-- Tables in use: `users` (with `role`: `OWNER`/`CHU` can review requests), `requests`, `shifts`,
-  `daily_revenue`, `notifications`, `notification_settings`, plus the chat document/contract tables.
+- Tables in use: `users` (with `role` — `OWNER`/`CHU` can review requests and manage branches — and
+  `is_active`, false meaning the account left the company), `requests`,
+  `shifts` (**the shift template catalogue** — name + hours, written by SCRUM-30 and read by quick search),
+  `shift_assignments` (the schedule: one employee × one template × one `work_date`), `attendance` (the
+  timesheet: one employee × one `work_date`, GPS point + distance, photo, complaint, verification),
+  `facilities`, `daily_revenue`, `branches`, `notifications`, `notification_settings`, plus the chat
+  document/contract tables.
 - Business time is **Asia/Bangkok (UTC+7, no DST)** while timestamps are stored/served in UTC.
   Convert with `Intl.DateTimeFormat` + `Date.UTC(y, m - 1, d, -7)` (`lib/usecases/businessDay.ts`,
   `GetRevenueReportUseCase`). Do not "simplify" this to the server timezone.
-- `lib/mock/adminStore.ts` is in-memory demo data for screens that have no table yet (requests, shifts,
-  attendance, employee status). Mutations reset on reload and are not shared between processes. When a
-  feature becomes real, route it through a use case + repository rather than extending the mock store.
+- `lib/mock/adminStore.ts` was deleted with SCRUM-22: there is no demo data left, and every screen reads a
+  table or an RPC. Do not reintroduce a mock store — a screen that has no table yet is a prototype that
+  should say so in its own file, not a shared in-memory module.
 
 ## API documentation
 
@@ -243,18 +258,36 @@ them to a real table, follow this recipe and add its `supabase/sql/SCRUM-*.sql` 
 - Turbopack is pinned to the app folder via `root: process.cwd()` in `next.config.ts` — the parent
   `D:\HR` also has a `package.json`/`node_modules`, so don't remove that setting.
 - `npm run lint` is currently red for reasons unrelated to any single task (see "Commands"): the
-  committed bundles under `hr_website/hr_website/.next/**` are linted and four admin pages have known
-  errors. Scope lint to the files you changed; changing the ignore pattern or those pages needs approval.
+  committed bundles under `hr_website/hr_website/.next/**` are linted. Scope lint to the files you
+  changed; changing the ignore pattern needs approval.
 - Supabase numeric columns come back as strings; repositories coerce with `Number(...)`.
 - RLS decides visibility, so the same query returns different rows per session — check the policies in
   `supabase/sql/*.sql` before debugging an "empty" or "not found" result, and remember RPCs must respect
   `auth.uid()`.
 - A missing `users` row for a signed-in account is a `403` (see `/api/search`), not a `401` — `401` means
-  no session at all. `users.role` gates approvals (`OWNER`/`CHU` in `ReviewRequestUseCase`), but
-  `PATCH /api/requests/[id]/review` still runs on the mock store without auth; migrating it means wiring
-  `ReviewRequestUseCase` + `SupabaseRequestRepository`, not patching the mock.
+  no session at all. `users.role` gates approvals (`OWNER`/`CHU` in `ReviewRequestUseCase`), and
+  `PATCH /api/requests/[id]/review` now runs on the real `requests` table: the route reads the role from
+  the session's profile, the use case rejects other roles and the `requests_update_managers` policy
+  (SCRUM-41) repeats that check in the database. Never go back to trusting a role sent in the body.
 - Dates: store and serve UTC (`toISOString()`), compute business days in `Asia/Bangkok` — the unique index
   on `daily_revenue` also uses the Bangkok date, so a "duplicate" 409 can come from the database, not the use case.
+- `public.users` has **no script of its own** — it was hand-created in the dashboard before any ticket, which
+  is why `SCRUM-50_user_registration.sql` only fills the gaps (`create table if not exists` + `add column if
+  not exists`) and why nothing but that trigger creates the profile row for a new auth account. Add a public
+  screen (like `/register`) by extending `lib/publicPaths.ts`; `proxy.ts`, `Header` and `Sidebar` all read it.
+- `public.shifts` is a shift **template** ("Ca sáng", 08:00–17:00) and `public.shift_assignments` is the
+  schedule — do not merge them. Overlap detection lives in the use case
+  (`lib/usecases/shiftOverlap.ts`) because only it can compare the hours of two templates; the database only
+  guards the exact duplicate with a unique index on `(employee_id, work_date, shift_id)`.
+- Embedded PostgREST selects (`employee:users (id, full_name)`) defeat the client's type inference: `data`
+  comes back as `GenericStringError`, so those casts go through `unknown` and the row type is normalised in
+  the repository. A to-one embedding can also arrive as an array, so normalise with a `firstOf` helper.
+- Attendance is split by device: the mobile app inserts the check-in (GPS point, photo) and the web app
+  only reviews it. `attendance_guard_self_update` (SCRUM-21) therefore blocks an employee from editing
+  their own check-in facts even though RLS lets them complete the record — do not "fix" that by widening
+  the policy. `attendance_compute_distance` derives `check_in_distance_m` from the stored coordinates, so
+  the distance and the point can never disagree; the *coordinates* are still whatever the device measured,
+  which the server cannot independently verify.
 
 ## Tóm tắt (Tiếng Việt)
 
