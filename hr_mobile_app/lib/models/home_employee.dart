@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import '../widgets/stat_card_employee.dart';
-import '../widgets/dropdown_filter_employee.dart';
-import '../widgets/bottom_nav_bar.dart';
-import 'work_schedule_employee.dart'; // Import màn hình Lịch làm việc
+
 import '../routes/app_routers.dart'; // Import AppRoutes
+import '../widgets/bottom_nav_bar.dart';
+import '../widgets/stat_card_employee.dart';
 
 class HomeEmployeeScreen extends StatefulWidget {
   const HomeEmployeeScreen({super.key});
@@ -41,9 +40,7 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                   height: 210,
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 50, 20, 0),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF3860F4),
-                  ),
+                  decoration: const BoxDecoration(color: Color(0xFF3860F4)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -76,14 +73,20 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                               ),
                               const SizedBox(height: 4),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withOpacity(0.25),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: const Text(
                                   'Chức vụ nhân viên',
-                                  style: TextStyle(color: Colors.white, fontSize: 12),
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
                             ],
@@ -116,7 +119,11 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                             ),
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 8,
+                                offset: Offset(0, 4),
+                              ),
                             ],
                           ),
                           child: InkWell(
@@ -128,7 +135,11 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                                 SizedBox(width: 8),
                                 Text(
                                   'Chấm công',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ],
                             ),
@@ -143,7 +154,11 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: const [
-                              BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 6,
+                                offset: Offset(0, 3),
+                              ),
                             ],
                           ),
                           child: InkWell(
@@ -155,7 +170,11 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                                 SizedBox(width: 8),
                                 Text(
                                   'Lương: số tiền',
-                                  style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 15),
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ],
                             ),
@@ -186,14 +205,27 @@ class _HomeEmployeeScreenState extends State<HomeEmployeeScreen> {
                       children: [
                         const Text(
                           'Tiện ích',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         GestureDetector(
                           onTap: () {},
                           child: const Row(
                             children: [
-                              Text('Xem chi tiết', style: TextStyle(color: Colors.grey, fontSize: 14)),
-                              Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                              Text(
+                                'Xem chi tiết',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right,
+                                size: 20,
+                                color: Colors.grey,
+                              ),
                             ],
                           ),
                         ),

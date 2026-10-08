@@ -7,7 +7,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
   bool _rememberMe = false;
@@ -23,11 +24,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 1), // Bắt đầu ở vị trí khuất bên dưới
-      end: Offset.zero,          // Trượt lên vị trí gốc
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
+      end: Offset.zero, // Trượt lên vị trí gốc
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     // Kích hoạt hiệu ứng trượt ngay khi vào màn hình
     _controller.forward();
@@ -44,7 +42,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: Colors.blue[200], // Màu nền xanh nhạt cho toàn bộ màn hình
+      backgroundColor:
+          Colors.blue[200], // Màu nền xanh nhạt cho toàn bộ màn hình
       body: Stack(
         children: [
           // 1. Ảnh background phía trên (Asset Image)
@@ -58,37 +57,42 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 Container(
                   decoration: const BoxDecoration(
                     image: DecorationImage(
-                      image: AssetImage('assets/images/bg.png'), // Đổi tên file ảnh của bạn tại đây
+                      image: AssetImage(
+                        'assets/images/bg.png',
+                      ), // Đổi tên file ảnh của bạn tại đây
                       fit: BoxFit.cover,
                     ),
                   ),
                 ),
                 // Lớp phủ đen mờ nhẹ giúp chữ Welcome nổi bật
-                Container(
-                  color: Colors.black.withOpacity(0.2),
-                ),
+                Container(color: Colors.black.withOpacity(0.2)),
                 // Text Welcome Back
                 Positioned(
-  top: size.height * 0.12,
-  left: 28,
-  child: Text(
-    'Welcome\nHuman Resources!',
-    style: TextStyle(
-      color: Colors.white,
-      fontSize: 34,
-      fontWeight: FontWeight.bold,
-      height: 1.2,
-      // Thêm danh sách các bóng ở đây
-      shadows: [
-        Shadow(
-          offset: const Offset(2.0, 2.0), // Độ lệch x, y của bóng
-          blurRadius: 6.0,                  // Độ mờ nhòe của bóng
-          color: Colors.black.withOpacity(0.7), // Màu sắc và độ trong suốt của bóng
-        ),
-      ],
-    ),
-  ),
-),
+                  top: size.height * 0.12,
+                  left: 28,
+                  child: Text(
+                    'Welcome\nHuman Resources!',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 34,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                      // Thêm danh sách các bóng ở đây
+                      shadows: [
+                        Shadow(
+                          offset: const Offset(
+                            2.0,
+                            2.0,
+                          ), // Độ lệch x, y của bóng
+                          blurRadius: 6.0, // Độ mờ nhòe của bóng
+                          color: Colors.black.withOpacity(
+                            0.7,
+                          ), // Màu sắc và độ trong suốt của bóng
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -102,7 +106,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 height: size.height * 0.62,
                 width: double.infinity,
                 decoration: const BoxDecoration(
-                  color: Color.fromARGB(255, 253, 252, 252), // Tone đen xám hiện đại
+                  color: Color.fromARGB(
+                    255,
+                    253,
+                    252,
+                    252,
+                  ), // Tone đen xám hiện đại
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(36),
                     topRight: Radius.circular(36),
@@ -155,15 +164,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                             // Input Email
                             TextField(
-                              style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
+                              style: const TextStyle(
+                                color: Color.fromARGB(255, 0, 0, 0),
+                              ),
                               decoration: InputDecoration(
                                 hintText: 'Email address',
-                                hintStyle: TextStyle(color: const Color.fromARGB(255, 11, 11, 11)),
+                                hintStyle: TextStyle(
+                                  color: const Color.fromARGB(255, 11, 11, 11),
+                                ),
                                 enabledBorder: UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.grey[800]!),
+                                  borderSide: BorderSide(
+                                    color: Colors.grey[800]!,
+                                  ),
                                 ),
                                 focusedBorder: const UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Color.fromARGB(255, 0, 0, 0)),
+                                  borderSide: BorderSide(
+                                    color: Color.fromARGB(255, 0, 0, 0),
+                                  ),
                                 ),
                               ),
                             ),
@@ -175,10 +192,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 hintText: 'Password',
-                                hintStyle: TextStyle(color: const Color.fromARGB(255, 11, 11, 11)),
-                                suffixIcon: Icon(Icons.visibility_off_outlined, color: Colors.grey[500]),
+                                hintStyle: TextStyle(
+                                  color: const Color.fromARGB(255, 11, 11, 11),
+                                ),
+                                suffixIcon: Icon(
+                                  Icons.visibility_off_outlined,
+                                  color: Colors.grey[500],
+                                ),
                                 enabledBorder: UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.grey[800]!),
+                                  borderSide: BorderSide(
+                                    color: Colors.grey[800]!,
+                                  ),
                                 ),
                                 focusedBorder: const UnderlineInputBorder(
                                   borderSide: BorderSide(color: Colors.white),
@@ -193,7 +217,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 onPressed: () {},
                                 child: Text(
                                   'Forgot password?',
-                                  style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
                             ),
@@ -208,7 +235,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     value: _rememberMe,
                                     activeColor: Colors.white,
                                     checkColor: Colors.black,
-                                    side: BorderSide(color: const Color.fromARGB(255, 10, 10, 10)!),
+                                    side: BorderSide(
+                                      color: const Color.fromARGB(
+                                        255,
+                                        10,
+                                        10,
+                                        10,
+                                      )!,
+                                    ),
                                     onChanged: (value) {
                                       setState(() {
                                         _rememberMe = value ?? false;
@@ -219,12 +253,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 const SizedBox(width: 8),
                                 Text(
                                   'Remember me',
-                                  style: TextStyle(color: const Color.fromARGB(255, 9, 9, 9), fontSize: 14),
+                                  style: TextStyle(
+                                    color: const Color.fromARGB(255, 9, 9, 9),
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 35),
-
                           ],
                         ),
                       ),

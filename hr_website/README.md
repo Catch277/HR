@@ -1,6 +1,6 @@
 # Humora HR Website
 
-Web admin for the HR & shift operations of **Humora**, a coffee-chain: declare and reconcile
+Web admin for the HR & shift operations of **Humora**: declare and reconcile
 per-shift revenue, approve staff requests, schedule shifts, record attendance, see who is working
 right now, deliver notifications, search everything quickly, and answer policy/contract questions
 with an AI assistant powered by Google Gemini.
@@ -316,7 +316,7 @@ This README documents the `hr_website` app only. The repository root (one level 
 
 ## Tổng quan nhanh (Tiếng Việt)
 
-- **Đây là gì:** web admin quản lý nhân sự và vận hành ca cho chuỗi cà phê Humora — khai báo doanh thu
+- **Đây là gì:** web admin quản lý nhân sự và vận hành ca cho Humora — khai báo doanh thu
   đầu/cuối ca, duyệt đơn từ, xếp ca, bảng công, trạng thái nhân viên, thông báo, tìm kiếm nhanh và trợ lý
   AI hỏi đáp chính sách/hợp đồng.
 - **Công nghệ:** Next.js 16 (App Router) + TypeScript + Tailwind v4; Supabase (PostgreSQL, Auth, RLS, RPC)
