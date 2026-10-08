@@ -296,6 +296,18 @@ that must not live in SQL).
   SCRUM-50 also created the narrow `users_select_own` read policy; `SCRUM-24_staff_admin.sql` replaced it with
   `users_select_authenticated` (the staff directory) and added `users_update_managers`, so that is where the
   read and write rules live now.
+- `public.notifications`, `public.notification_settings` and `public.requests` were hand-made the same way, so
+  `SCRUM-48` and `SCRUM-41` — both written with `create table if not exists` — never added what they declare:
+  `notifications` had `content` instead of `body` and neither `related_entity_*` column, `notification_settings`
+  had no `id`, and `requests` had no `requests_user_id_fkey`. `SCRUM-55_schema_gap_fill.sql` is the gap-fill
+  (columns, the `content` → `body` copy, the key, the FK, and SCRUM-48's indexes/trigger/policies restated
+  idempotently). A 500 from `/api/notifications`, `/api/notifications/settings` or `/api/requests` almost
+  always means it has not been applied yet.
+- When a screen answers 500 and the route logs a generic message, the database speaks plainly through
+  PostgREST: `GET {NEXT_PUBLIC_SUPABASE_URL}/rest/v1/<table>?select=<column>&limit=1` with the anon key answers
+  `42703 column ... does not exist` for a missing column and `PGRST200 Could not find a relationship ...` for
+  a missing foreign key (RLS hides rows, not the error). That is how the SCRUM-55 gaps were found — the
+  `latest` browser session is not needed, and nothing sensitive is returned.
 - `public.shifts` is a shift **template** ("Ca sáng", 08:00–17:00) and `public.shift_assignments` is the
   schedule — do not merge them. Overlap detection lives in the use case
   (`lib/usecases/shiftOverlap.ts`) because only it can compare the hours of two templates; the database only
