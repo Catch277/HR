@@ -3,20 +3,76 @@
 import {
   ArrowLeftRight,
   Bell,
-  ChevronDown,
   Loader2,
+  LogOut,
   Search,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+import { isPublicPath } from "@/lib/publicPaths";
 
 type SearchResult = { id: number; title: string; type: string };
 
+type UserProfile = { id: string; full_name: string; role: string };
+
+const ROLE_LABELS: Record<string, string> = {
+  OWNER: "Chủ sở hữu",
+  CHU: "Quản lý chi nhánh",
+  EMPLOYEE: "Nhân viên",
+};
+
 export default function Header() {
+  const pathname = usePathname();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    // Public screens (login, register) have no session and no profile to show.
+    if (isPublicPath(pathname)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: UserProfile | null) => {
+        if (!cancelled) {
+          setProfile(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  // The login and register screens render outside the authenticated shell.
+  if (isPublicPath(pathname)) {
+    return null;
+  }
+
+  async function handleSignOut() {
+    try {
+      await fetch("/api/auth/sign-out", { method: "POST" });
+    } finally {
+      // `replace` keeps the authenticated page out of the history, and `refresh` drops the
+      // cached server render so the shell re-renders without a session.
+      router.replace("/login");
+      router.refresh();
+    }
+  }
 
   // Mock search function to mimic GET /api/search
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,13 +175,20 @@ export default function Header() {
           </div>
           <div className="leading-tight">
             <p className="text-xs font-semibold text-slate-800">
-              Nguyễn Thu Trang
+              {profile?.full_name ?? "Đang tải..."}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-500">
-              Quản lý Nhân sự / HR Lead
+              {profile ? (ROLE_LABELS[profile.role] ?? profile.role) : "—"}
             </p>
           </div>
-          <ChevronDown size={14} className="text-slate-400" />
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            title="Đăng xuất"
+            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          >
+            <LogOut size={15} />
+          </button>
         </div>
       </div>
     </header>

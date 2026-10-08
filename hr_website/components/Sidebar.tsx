@@ -8,6 +8,7 @@ import {
   Clock3,
   FileText,
   CalendarRange,
+  PackageSearch,
   UserCheck,
   ClipboardCheck,
   LayoutDashboard,
@@ -16,11 +17,15 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { isPublicPath } from "@/lib/publicPaths";
+
 const navItems = [
   { name: "Tổng quan", href: "/", icon: LayoutDashboard },
+  { name: "Quản lý chi nhánh", href: "/branches", icon: Building2 },
+  { name: "Cơ sở vật chất", href: "/facilities", icon: PackageSearch },
   { name: "Doanh thu", href: "/revenue", icon: CircleDollarSign },
   { name: "Đơn từ", href: "/requests", icon: FileText },
-  { name: "Xếp ca", href: "/shifts", icon: CalendarRange },
+  { name: "Lịch làm việc", href: "/schedules", icon: CalendarRange },
   { name: "Trạng thái nhân viên", href: "/employee-status", icon: UserCheck },
   { name: "Bảng công", href: "/attendance", icon: ClipboardCheck },
   { name: "Báo cáo", href: "/reports", icon: PieChart },
@@ -30,6 +35,11 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+
+  // The login and register screens render outside the authenticated shell.
+  if (isPublicPath(pathname)) {
+    return null;
+  }
 
   return (
     <aside className="z-20 hidden h-dvh w-56 shrink-0 flex-col border-r border-slate-200/80 bg-white shadow-sm md:flex">
