@@ -1,480 +1,462 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
-  CalendarDays,
-  ChevronDown,
   CircleDollarSign,
-  Download,
-  MapPin,
+  Loader2,
+  Printer,
+  RefreshCw,
   TrendingUp,
   Wallet,
 } from "lucide-react";
 
-const dailyRevenue = [38, 55, 31, 72, 79, 49, 66, 91, 61, 76, 82, 57, 88, 96];
+import type { Branch } from "@/lib/domain/entities/Branch";
+import type {
+  RevenueReportPeriod,
+  RevenueReportResult,
+} from "@/lib/domain/entities/RevenueReport";
+import { getBusinessDay } from "@/lib/usecases/businessDay";
 
-const reportRows = [
-  {
-    date: "02/10/2026",
-    shift: "Ca Tối · 15:00–23:00",
-    lead: "Lê Hoàng Nam",
-    open: "2.000.000",
-    close: "24.850.000",
-    revenue: "22.850.000",
-    diff: "0",
-    status: "Khớp",
-  },
-  {
-    date: "02/10/2026",
-    shift: "Ca Sáng · 07:00–15:00",
-    lead: "Phạm Mỹ Linh",
-    open: "1.500.000",
-    close: "17.250.000",
-    revenue: "15.800.000",
-    diff: "-50.000",
-    status: "Lệch nhẹ",
-  },
-  {
-    date: "01/10/2026",
-    shift: "Ca Tối · 15:00–23:00",
-    lead: "Trần Quốc Bảo",
-    open: "2.000.000",
-    close: "19.420.000",
-    revenue: "17.420.000",
-    diff: "0",
-    status: "Khớp",
-  },
-  {
-    date: "01/10/2026",
-    shift: "Ca Sáng · 07:00–15:00",
-    lead: "Võ Thùy Chi",
-    open: "1.500.000",
-    close: "14.600.000",
-    revenue: "13.100.000",
-    diff: "0",
-    status: "Khớp",
-  },
-  {
-    date: "30/09/2026",
-    shift: "Ca Tối · 15:00–23:00",
-    lead: "Đinh Gia Huy",
-    open: "2.000.000",
-    close: "18.900.000",
-    revenue: "16.900.000",
-    diff: "-20.000",
-    status: "Lệch nhẹ",
-  },
+const PERIOD_OPTIONS: { value: RevenueReportPeriod; label: string }[] = [
+  { value: "day", label: "Hôm nay" },
+  { value: "week", label: "Tuần này" },
+  { value: "month", label: "Tháng này" },
+  { value: "quarter", label: "Quý này" },
+  { value: "year", label: "Năm nay" },
 ];
 
-const metrics = [
-  {
-    label: "Tổng tiền đầu ca",
-    value: "45.200.000 ₫",
-    delta: "+4,2%",
-    note: "so với tháng trước",
-    icon: Wallet,
-    tone: "blue",
-  },
-  {
-    label: "Tổng tiền cuối ca thực tế",
-    value: "892.450.000 ₫",
-    delta: "+12,8%",
-    note: "tổng dòng tiền thu",
-    icon: CircleDollarSign,
-    tone: "green",
-  },
-  {
-    label: "Tổng doanh thu thuần",
-    value: "847.250.000 ₫",
-    delta: "Đạt 108% KPI",
-    note: "mục tiêu: 780 triệu",
-    icon: TrendingUp,
-    tone: "mint",
-  },
-  {
-    label: "Tỷ lệ chênh lệch / hao hụt",
-    value: "-1.350.000 ₫",
-    delta: "↓ 22,5%",
-    note: "giảm hao hụt lệch ca",
-    icon: ArrowDownRight,
-    tone: "amber",
-  },
-];
+const ALL_BRANCHES = "all";
+
+const currency = new Intl.NumberFormat("vi-VN");
+
+function formatCurrency(value: number): string {
+  return `${currency.format(Math.round(value))} ₫`;
+}
+
+/** Signed delta, so a shortage reads as a minus rather than as a smaller positive number. */
+function formatDelta(value: number): string {
+  return `${value > 0 ? "+" : ""}${currency.format(Math.round(value))} ₫`;
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "chưa có kỳ so sánh";
+  }
+
+  return `${value > 0 ? "+" : ""}${value.toFixed(1).replace(".", ",")}%`;
+}
 
 export default function ReportsPage() {
+  const [period, setPeriod] = useState<RevenueReportPeriod>("month");
+  const [branchId, setBranchId] = useState<string>(ALL_BRANCHES);
+  const [date, setDate] = useState<string>(() => getBusinessDay(new Date()));
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [report, setReport] = useState<RevenueReportResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // Branch list for the filter; a failure only hides the filter, never the report.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/branches", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: Branch[]) => {
+        if (!cancelled) {
+          setBranches(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load(): Promise<{
+      report: RevenueReportResult | null;
+      error: string | null;
+    }> {
+      const params = new URLSearchParams({ period, date });
+
+      if (branchId !== ALL_BRANCHES) {
+        params.set("branch_id", branchId);
+      }
+
+      const response = await fetch(`/api/revenue/report?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        return {
+          report: null,
+          error:
+            response.status === 401
+              ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+              : (data?.error ?? "Không tải được báo cáo doanh thu."),
+        };
+      }
+
+      return {
+        report: (await response.json()) as RevenueReportResult,
+        error: null,
+      };
+    }
+
+    load()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        setReport(result.report);
+        setPageError(result.error ?? "");
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setReport(null);
+        setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [period, branchId, date, reloadToken]);
+
+  function refresh() {
+    setLoading(true);
+    setPageError("");
+    setReloadToken((token) => token + 1);
+  }
+
+  const series = report?.series ?? [];
+  const summary = report?.summary ?? null;
+  const comparison = report?.comparison ?? null;
+  const maxRevenue = series.reduce(
+    (max, point) => Math.max(max, point.total_revenue_amount),
+    0,
+  );
+  const averagePerBucket =
+    series.length > 0
+      ? (summary?.total_revenue_amount ?? 0) / series.length
+      : 0;
+  const branchLabel =
+    branchId === ALL_BRANCHES
+      ? "Tất cả chi nhánh"
+      : (branches.find((branch) => branch.id === branchId)?.name ??
+        "Chi nhánh đã chọn");
+
   return (
     <div className="space-y-5">
       <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Tài chính & thu / SCRUM-44
+            Tài chính &amp; thu / SCRUM-44
           </p>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Báo cáo & Phân tích Doanh thu
+            Báo cáo &amp; Phân tích Doanh thu
           </h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
-            Theo dõi doanh thu, dòng tiền và mức độ đối soát tại các chi nhánh.
+            Doanh thu của các ca <b>đã chốt</b> (tiền cuối ca trừ tiền đầu ca), theo ngày kinh doanh
+            Asia/Bangkok và so với kỳ liền trước. Số liệu do RPC{" "}
+            <code className="rounded bg-slate-100 px-1">get_revenue_report</code> tổng hợp trong
+            database, không phải dữ liệu mẫu.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">
-            <TrendingUp size={14} /> Đối soát tự động
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            Tải lại
           </button>
-          <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">
-            <Download size={14} /> In sổ sách
-          </button>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700">
-            <Download size={14} /> Xuất báo cáo
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Printer size={14} /> In sổ sách
           </button>
         </div>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
-        <div
-          className="flex flex-wrap items-center gap-1"
-          role="group"
-          aria-label="Chọn kỳ báo cáo"
-        >
-          <span className="px-2 text-[10px] font-semibold uppercase text-slate-400">
-            Kỳ báo cáo
-          </span>
-          {[
-            { label: "Hôm nay", active: false },
-            { label: "Tuần này", active: false },
-            { label: "Tháng này", active: true },
-          ].map(({ label, active }) => (
+      <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {PERIOD_OPTIONS.map((option) => (
             <button
-              key={label}
-              className={`rounded-md px-3 py-2 text-xs font-medium ${active ? "bg-[#0C66E4] text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              key={option.value}
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setPeriod(option.value);
+              }}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                period === option.value
+                  ? "bg-[#0C66E4] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
             >
-              {label}
+              {option.label}
             </button>
           ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
-            <MapPin size={14} className="text-slate-400" />
-            <select
-              aria-label="Chi nhánh"
-              className="min-w-32 bg-transparent font-medium text-slate-700 outline-none"
-            >
-              <option>Chi nhánh Q.1 - HCM</option>
-              <option>Chi nhánh Q.3 - HCM</option>
-              <option>Tất cả chi nhánh</option>
-            </select>
-            <ChevronDown size={13} className="text-slate-400" />
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
-            <CalendarDays size={14} className="text-slate-400" />
-            <input
-              aria-label="Khoảng ngày báo cáo"
-              className="w-36 bg-transparent font-medium text-slate-700 outline-none"
-              type="text"
-              defaultValue="01/10/2026 - 31/10/2026"
-            />
-          </label>
-          <button className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-[#0C66E4] hover:bg-blue-100">
-            Áp dụng
-          </button>
+
+          <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:block" />
+
+          <select
+            value={branchId}
+            onChange={(event) => {
+              setLoading(true);
+              setBranchId(event.target.value);
+            }}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-[#0C66E4]"
+            aria-label="Chi nhánh"
+          >
+            <option value={ALL_BRANCHES}>Tất cả chi nhánh</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="date"
+            value={date}
+            onChange={(event) => {
+              setLoading(true);
+              setDate(event.target.value || getBusinessDay(new Date()));
+            }}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-[#0C66E4]"
+            aria-label="Ngày trong kỳ"
+          />
+
+          <span className="ml-auto text-[10px] text-slate-500">
+            {branchLabel} · kỳ {period}
+          </span>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <article
-              key={metric.label}
-              className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
-                  {metric.label}
+      {pageError && (
+        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <AlertTriangle size={16} />
+          {pageError}
+        </div>
+      )}
+
+      {loading && !report ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
+          <Loader2 size={16} className="animate-spin" />
+          Đang tổng hợp doanh thu...
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Tổng tiền đầu ca
+                </p>
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                  <Wallet size={16} />
+                </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
+                {formatCurrency(summary?.total_open_amount ?? 0)}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Tiền mặt khai báo khi mở mỗi ca
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Tổng tiền cuối ca
+                </p>
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                  <CircleDollarSign size={16} />
+                </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
+                {formatCurrency(summary?.total_close_amount ?? 0)}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Do {summary?.record_count ?? 0} ca đã chốt báo cáo
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Doanh thu thuần
+                </p>
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <TrendingUp size={16} />
+                </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
+                {formatCurrency(summary?.total_revenue_amount ?? 0)}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Bình quân {formatCurrency(averagePerBucket)} mỗi mốc thời gian
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  So với kỳ trước
                 </p>
                 <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${metric.tone === "green" ? "bg-emerald-50 text-emerald-600" : metric.tone === "mint" ? "bg-teal-50 text-teal-600" : metric.tone === "amber" ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-[#0C66E4]"}`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                    (comparison?.difference ?? 0) < 0
+                      ? "bg-rose-50 text-rose-600"
+                      : "bg-emerald-50 text-emerald-600"
+                  }`}
                 >
-                  <Icon size={16} />
+                  {(comparison?.difference ?? 0) < 0 ? (
+                    <ArrowDownRight size={16} />
+                  ) : (
+                    <ArrowUpRight size={16} />
+                  )}
                 </span>
               </div>
-              <p className="mt-5 text-2xl font-bold tabular-nums tracking-tight text-slate-900">
-                {metric.value}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px]">
-                <span
-                  className={`rounded px-1.5 py-1 font-semibold ${metric.tone === "amber" ? "bg-emerald-50 text-emerald-700" : "bg-emerald-50 text-emerald-700"}`}
-                >
-                  <ArrowUpRight size={11} className="mr-0.5 inline" />
-                  {metric.delta}
-                </span>
-                <span className="text-slate-400">{metric.note}</span>
-              </div>
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.7fr_0.8fr]">
-        <article className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">
-                Biến động doanh thu theo ngày
-              </h2>
-              <p className="mt-1 text-[11px] text-slate-500">
-                So sánh doanh thu thực thu với mục tiêu trong tháng 10/2026
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
-              <span className="flex items-center gap-1.5">
-                <i className="h-2 w-2 rounded-sm bg-[#0C66E4]" /> Doanh thu thực
-                thu
-              </span>
-              <span className="flex items-center gap-1.5">
-                <i className="h-2 w-2 rounded-sm bg-emerald-500" /> Mục tiêu KPI
-              </span>
-            </div>
-          </div>
-          <div className="relative mt-6 h-52 border-b border-slate-200 bg-[linear-gradient(to_bottom,transparent_24%,#e8edf5_25%,transparent_25%,transparent_49%,#e8edf5_50%,transparent_50%,transparent_74%,#e8edf5_75%,transparent_75%)]">
-            <div className="absolute inset-x-0 bottom-0 flex h-full items-end justify-between gap-1 px-2">
-              {dailyRevenue.map((height, index) => (
-                <div
-                  key={`${height}-${index}`}
-                  className="group relative flex h-full flex-1 items-end"
-                >
-                  <div
-                    className="w-full rounded-t-sm bg-gradient-to-t from-blue-200 to-[#0C66E4] transition-colors group-hover:from-blue-300 group-hover:to-blue-700"
-                    style={{ height: `${height}%` }}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="absolute inset-x-2 top-[34%] border-t-2 border-dashed border-emerald-500/80" />
-          </div>
-          <div className="mt-2 flex justify-between px-1 text-[9px] text-slate-400">
-            <span>01/10</span>
-            <span>04/10</span>
-            <span>07/10</span>
-            <span>10/10</span>
-            <span>13/10</span>
-            <span>16/10</span>
-            <span>19/10</span>
-            <span>22/10</span>
-            <span>25/10</span>
-            <span>28/10</span>
-            <span>31/10</span>
-          </div>
-          <div className="mt-4 flex flex-col gap-2 rounded-lg bg-blue-50/80 px-3 py-2 text-[10px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              <TrendingUp size={13} className="mr-1 inline text-emerald-600" />
-              Đỉnh doanh thu ngày <b>31/10: 38.650.000 ₫</b> (Đêm Halloween)
-            </span>
-            <span>
-              Trung bình ca: <b>14.120.000 ₫</b>
-            </span>
-          </div>
-        </article>
-
-        <article className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900">
-            Phương thức thanh toán
-          </h2>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Tỷ trọng luồng tiền tiếp nhận tại ca
-          </p>
-          <div className="mx-auto my-4 flex h-40 w-40 items-center justify-center">
-            <div className="relative h-full w-full">
-              <svg
-                className="h-full w-full -rotate-90"
-                viewBox="0 0 120 120"
-                role="img"
-                aria-label="Biểu đồ donut phương thức thanh toán"
+              <p
+                className={`mt-2 text-2xl font-bold tabular-nums ${
+                  (comparison?.difference ?? 0) < 0
+                    ? "text-rose-600"
+                    : "text-emerald-600"
+                }`}
               >
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="43"
-                  fill="none"
-                  stroke="#E6ECF5"
-                  strokeWidth="14"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="43"
-                  fill="none"
-                  stroke="#0C66E4"
-                  strokeWidth="14"
-                  strokeDasharray="146 270"
-                  strokeDashoffset="0"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="43"
-                  fill="none"
-                  stroke="#11A879"
-                  strokeWidth="14"
-                  strokeDasharray="76 270"
-                  strokeDashoffset="-150"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="43"
-                  fill="none"
-                  stroke="#F4B740"
-                  strokeWidth="14"
-                  strokeDasharray="48 270"
-                  strokeDashoffset="-230"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <b className="text-lg tabular-nums text-slate-900">847,25tr</b>
-                <span className="text-[9px] text-slate-500">100% ghi nhận</span>
-              </div>
+                {formatDelta(comparison?.difference ?? 0)}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                {formatPercent(comparison?.percentage_change ?? null)} · kỳ trước{" "}
+                {formatCurrency(comparison?.previous_total_revenue_amount ?? 0)}
+              </p>
             </div>
           </div>
-          <div className="space-y-3 text-[10px]">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-slate-600">
-                <i className="h-2 w-2 rounded-full bg-[#0C66E4]" />
-                Chuyển khoản QR động
-              </span>
-              <b className="text-slate-800">
-                54%{" "}
-                <span className="ml-2 font-normal text-slate-400">
-                  457,51tr
-                </span>
-              </b>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-slate-600">
-                <i className="h-2 w-2 rounded-full bg-emerald-500" />
-                Thẻ POS / Visa / Master
-              </span>
-              <b className="text-slate-800">
-                28%{" "}
-                <span className="ml-2 font-normal text-slate-400">
-                  237,23tr
-                </span>
-              </b>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-slate-600">
-                <i className="h-2 w-2 rounded-full bg-amber-400" />
-                Tiền mặt tại quầy
-              </span>
-              <b className="text-slate-800">
-                18%{" "}
-                <span className="ml-2 font-normal text-slate-400">
-                  152,50tr
-                </span>
-              </b>
-            </div>
-          </div>
-        </article>
-      </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
-        <div className="flex flex-col justify-between gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              Bảng dữ liệu chi tiết ca làm việc
-            </h2>
-            <p className="mt-1 text-[10px] text-slate-500">
-              Tổng cộng 62 ca làm việc trong khoảng thời gian đã chọn
-            </p>
-          </div>
-          <button className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
-            <MapPin size={13} /> Lọc theo trưởng ca hoặc ngày{" "}
-            <ChevronDown size={13} />
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-left text-xs">
-            <thead className="bg-[#F3F6FC] text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Ngày / Thời gian</th>
-                <th className="px-4 py-3">Ca làm việc</th>
-                <th className="px-4 py-3">Trưởng ca / Nhân sự</th>
-                <th className="px-4 py-3 text-right">Tiền đầu ca</th>
-                <th className="px-4 py-3 text-right">Tiền cuối ca</th>
-                <th className="px-4 py-3 text-right">Doanh thu ghi nhận</th>
-                <th className="px-4 py-3 text-right">Chênh lệch</th>
-                <th className="px-4 py-3">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {reportRows.map((row) => (
-                <tr
-                  key={`${row.date}-${row.shift}`}
-                  className="transition-colors hover:bg-blue-50/40"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-800">
-                    {row.date}
-                    <span className="mt-1 block text-[9px] font-normal text-slate-400">
-                      Thứ Năm
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                    {row.shift}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">
-                    {row.lead}
-                    <span className="mt-1 block text-[9px] text-slate-400">
-                      NV-00892
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
-                    {row.open} ₫
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
-                    {row.close} ₫
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-[#0C66E4]">
-                    {row.revenue} ₫
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${row.diff.startsWith("-") ? "text-rose-600" : "text-emerald-600"}`}
-                  >
-                    {row.diff} ₫
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span
-                      className={`rounded-full px-2 py-1 text-[9px] font-semibold ${row.status === "Khớp" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
-                    >
-                      {row.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[10px] text-slate-500">
-          <span>
-            Hiển thị <b className="text-slate-700">1–5</b> trên tổng số 62 ca
-            làm việc
-          </span>
-          <div className="flex items-center gap-1">
-            <button className="rounded-md px-2 py-1 text-slate-400">‹</button>
-            <button className="rounded-md bg-[#0C66E4] px-2.5 py-1 font-semibold text-white">
-              1
-            </button>
-            <button className="rounded-md px-2.5 py-1 hover:bg-slate-100">
-              2
-            </button>
-            <button className="rounded-md px-2.5 py-1 hover:bg-slate-100">
-              3
-            </button>
-            <span className="px-1">…</span>
-            <button className="rounded-md px-2.5 py-1 hover:bg-slate-100">
-              12
-            </button>
-            <button className="rounded-md px-2 py-1 text-slate-600">›</button>
-          </div>
-        </div>
-      </section>
+          <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">
+                Doanh thu theo {period === "year" ? "tháng" : "ngày"}
+              </h2>
+              <span className="text-[10px] text-slate-500">
+                {series.length} mốc thời gian có doanh thu
+              </span>
+            </div>
+
+            {series.length === 0 ? (
+              <p className="py-12 text-center text-xs text-slate-400">
+                Kỳ này chưa có ca nào được chốt. Doanh thu chỉ xuất hiện sau khi ca được chốt trong
+                mục Doanh thu.
+              </p>
+            ) : (
+              <div className="mt-4 flex h-52 items-end gap-1">
+                {series.map((point) => {
+                  const height =
+                    maxRevenue > 0
+                      ? Math.max(
+                          2,
+                          Math.round(
+                            (point.total_revenue_amount / maxRevenue) * 100,
+                          ),
+                        )
+                      : 2;
+
+                  return (
+                    <div
+                      key={point.bucket_start}
+                      title={`${point.bucket_start}: ${formatCurrency(point.total_revenue_amount)} (${point.record_count} ca)`}
+                      className="flex-1 rounded-t bg-[#0C66E4]/80 transition-colors hover:bg-[#0C66E4]"
+                      style={{ height: `${height}%` }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-sm font-bold text-slate-900">Chi tiết theo mốc thời gian</h2>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                {branchLabel} · từ {report?.range.start_at?.slice(0, 10)} đến{" "}
+                {report?.range.end_at?.slice(0, 10)} (UTC)
+              </p>
+            </div>
+
+            {series.length === 0 ? (
+              <p className="px-5 py-10 text-center text-xs text-slate-400">
+                Không có dữ liệu để hiển thị.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Mốc thời gian</th>
+                      <th className="px-4 py-3 text-right font-semibold">Tiền đầu ca</th>
+                      <th className="px-4 py-3 text-right font-semibold">Tiền cuối ca</th>
+                      <th className="px-4 py-3 text-right font-semibold">Doanh thu</th>
+                      <th className="px-4 py-3 text-right font-semibold">Số ca</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {series.map((point) => (
+                      <tr
+                        key={point.bucket_start}
+                        className="transition-colors hover:bg-blue-50/40"
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-800">
+                          {point.bucket_start}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
+                          {formatCurrency(point.total_open_amount)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
+                          {formatCurrency(point.total_close_amount)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-[#0C66E4]">
+                          {formatCurrency(point.total_revenue_amount)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
+                          {point.record_count}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="border-t border-slate-100 px-4 py-3 text-[10px] text-slate-500">
+              {series.length} mốc thời gian · {summary?.record_count ?? 0} ca đã chốt · tổng doanh
+              thu {formatCurrency(summary?.total_revenue_amount ?? 0)}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

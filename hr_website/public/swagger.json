@@ -2198,6 +2198,99 @@
         }
       }
     },
+    "/api/revenue": {
+      "get": {
+        "summary": "List revenue records",
+        "description": "The records behind the Doanh thu screen: one row per branch per business day, newest first,\nwith the opening amount, the closing amount when the shift was closed and who closed it.\n`/api/revenue/report` answers the aggregates; this answers the rows. The window is counted in\nAsia/Bangkok business days, and the list is capped at 100 rows.\n",
+        "tags": [
+          "Revenue"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch_id",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Limits the list to one branch. Omit for every accessible branch."
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 31,
+              "default": 7
+            },
+            "description": "How many business days back to include, counting today."
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed",
+                "all"
+              ],
+              "default": "all"
+            },
+            "description": "Only records still open, only closed ones, or both."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revenue records, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RevenueRecord"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "One or more query parameters are invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/revenue/report": {
       "get": {
         "summary": "Get an aggregated revenue report",

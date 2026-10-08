@@ -24,3 +24,18 @@ export interface UpdateCloseRevenueInput {
   closeImageUrl: string | null;
   closedBy: string;
 }
+
+/**
+ * Filters for the revenue list behind the Doanh thu screen (the report endpoint answers totals and
+ * buckets; this answers the records themselves, so the screen can show what was declared and who
+ * closed it).
+ */
+export interface RevenueRecordFilters {
+  branchId?: string;
+  /** Inclusive start instant (already converted from the Asia/Bangkok business day). */
+  startAt?: Date;
+  /** Exclusive end instant. */
+  endAt?: Date;
+  /** true = closed records only, false = still open, undefined = both. */
+  isClosed?: boolean;
+}

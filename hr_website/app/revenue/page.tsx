@@ -1,539 +1,647 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
-  Camera,
   Check,
-  CheckCircle2,
   CircleDollarSign,
-  Clock3,
-  ImagePlus,
-  Landmark,
-  ReceiptText,
+  Loader2,
+  LockKeyhole,
   RefreshCw,
-  Upload,
+  Unlock,
+  Wallet,
 } from "lucide-react";
-import { useState } from "react";
 
-const denominations = [
-  { value: 500_000, label: "500.000 ₫" },
-  { value: 200_000, label: "200.000 ₫" },
-  { value: 100_000, label: "100.000 ₫" },
-  { value: 50_000, label: "50.000 ₫" },
+import type { Branch } from "@/lib/domain/entities/Branch";
+import type { RevenueRecord } from "@/lib/domain/entities/RevenueRecord";
+import { getBusinessDay } from "@/lib/usecases/businessDay";
+
+/** Vietnamese cash denominations, largest first — the order a drawer is counted in. */
+const DENOMINATIONS = [
+  500_000, 200_000, 100_000, 50_000, 20_000, 10_000, 5_000, 2_000, 1_000,
 ];
 
-const recentShifts = [
-  {
-    code: "CA-20261002-03",
-    shift: "Hôm qua · Ca đêm",
-    lead: "Lê Hoàng Nam",
-    opening: "3.500.000",
-    pos: "34.820.000",
-    actual: "38.320.000",
-    variance: "0 ₫",
-  },
-  {
-    code: "CA-20261002-02",
-    shift: "Hôm qua · Ca chiều",
-    lead: "Phạm Thị Mai",
-    opening: "3.000.000",
-    pos: "21.450.000",
-    actual: "24.450.000",
-    variance: "+50.000 ₫",
-  },
-  {
-    code: "CA-20261002-01",
-    shift: "Hôm qua · Ca sáng",
-    lead: "Trần Minh Tuấn",
-    opening: "3.000.000",
-    pos: "19.120.000",
-    actual: "22.120.000",
-    variance: "0 ₫",
-  },
-];
+const currency = new Intl.NumberFormat("vi-VN");
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("vi-VN").format(amount);
+function formatCurrency(value: number): string {
+  return `${currency.format(Math.round(value))} ₫`;
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(parsed);
+}
+
+function errorMessage(status: number, serverMessage?: string): string {
+  if (status === 401) {
+    return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+  }
+
+  if (status === 409) {
+    return "Hôm nay chi nhánh này đã khai báo mở ca rồi.";
+  }
+
+  if (status === 404) {
+    return "Chưa có khai báo mở ca cho hôm nay. Hãy mở ca trước khi chốt.";
+  }
+
+  if (status === 400) {
+    return serverMessage ?? "Số tiền không hợp lệ.";
+  }
+
+  return serverMessage ?? "Không thực hiện được thao tác. Vui lòng thử lại.";
+}
+
+const inputClassName =
+  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
 
 export default function RevenuePage() {
-  const [counts, setCounts] = useState<Record<number, number>>({
-    500_000: 4,
-    200_000: 5,
-    100_000: 3,
-    50_000: 4,
-  });
-  const [closingCash, setClosingCash] = useState(18_250_000);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchId, setBranchId] = useState("");
+  const [records, setRecords] = useState<RevenueRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState<"open" | "close" | "">("");
+  const [openAmount, setOpenAmount] = useState("0");
+  const [closeAmount, setCloseAmount] = useState("0");
+  const [counts, setCounts] = useState<Record<number, number>>({});
   const [closeNote, setCloseNote] = useState("");
-  const openingTotal = denominations.reduce(
-    (total, item) => total + item.value * (counts[item.value] ?? 0),
+  const [difference, setDifference] = useState<number | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // Branches first: the screen is per branch, and the revenue API needs one.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/branches", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: Branch[]) => {
+        if (cancelled) {
+          return;
+        }
+
+        const list = Array.isArray(data) ? data : [];
+        setBranches(list);
+        setBranchId((current) => current || (list[0]?.id ?? ""));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The last week of declarations for the selected branch, newest first.
+  useEffect(() => {
+    if (!branchId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load(): Promise<{
+      records: RevenueRecord[];
+      error: string | null;
+    }> {
+      const response = await fetch(
+        `/api/revenue?branch_id=${branchId}&days=7`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        return {
+          records: [],
+          error: errorMessage(response.status, data?.error),
+        };
+      }
+
+      return { records: (await response.json()) as RevenueRecord[], error: null };
+    }
+
+    load()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        setRecords(result.records);
+        setPageError(result.error ?? "");
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setRecords([]);
+        setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId, reloadToken]);
+
+  function refresh() {
+    setLoading(true);
+    setPageError("");
+    setReloadToken((token) => token + 1);
+  }
+
+  const today = getBusinessDay(new Date());
+  const recordsLoading = loading && branchId !== "";
+  const todayRecord =
+    records.find(
+      (record) => getBusinessDay(new Date(record.created_at)) === today,
+    ) ?? null;
+  const countedTotal = DENOMINATIONS.reduce(
+    (total, denomination) => total + denomination * (counts[denomination] ?? 0),
     0,
   );
-  const variance = closingCash - 18_400_000;
+
+  /**
+   * The denomination counter is a calculator for the "tiền cuối ca" field: changing a count rewrites
+   * the field, and typing in the field directly stays valid until the next count changes.
+   */
+  function setCount(denomination: number, rawValue: number) {
+    const value = Number.isFinite(rawValue) && rawValue > 0 ? Math.floor(rawValue) : 0;
+    const next = { ...counts, [denomination]: value };
+
+    setCounts(next);
+    setCloseAmount(
+      String(
+        DENOMINATIONS.reduce(
+          (total, current) => total + current * (next[current] ?? 0),
+          0,
+        ),
+      ),
+    );
+  }
+
+  async function declareOpen() {
+    const amount = Number(openAmount);
+
+    if (busy || !branchId) {
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount < 0) {
+      setPageError("Số tiền đầu ca phải là số không âm.");
+      return;
+    }
+
+    setBusy("open");
+    setPageError("");
+    setNote("");
+    setDifference(null);
+
+    try {
+      const response = await fetch("/api/revenue/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_id: branchId, open_amount: amount }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setPageError(errorMessage(response.status, data?.error));
+        return;
+      }
+
+      setNote(`Đã khai báo mở ca hôm nay với ${formatCurrency(amount)}.`);
+      refresh();
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function declareClose() {
+    const amount = Number(closeAmount);
+
+    if (busy || !branchId) {
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount < 0) {
+      setPageError("Số tiền cuối ca phải là số không âm.");
+      return;
+    }
+
+    setBusy("close");
+    setPageError("");
+    setNote("");
+    setDifference(null);
+
+    try {
+      const response = await fetch("/api/revenue/close", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branch_id: branchId,
+          close_amount: amount,
+          close_note: closeNote.trim() || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setPageError(errorMessage(response.status, data?.error));
+        return;
+      }
+
+      const data = (await response.json()) as {
+        revenue: RevenueRecord;
+        revenue_difference: number;
+      };
+
+      setDifference(data.revenue_difference);
+      setNote("Đã chốt ca. Số liệu đã vào báo cáo doanh thu.");
+      setCounts({});
+      setCloseNote("");
+      refresh();
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setBusy("");
+    }
+  }
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Ca làm việc / SCRUM-39 & SCRUM-40
+            Vận hành ca / SCRUM-39 &amp; SCRUM-40
           </p>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Khai báo doanh thu ca làm việc
-          </h1>
-          <p className="mt-1 text-xs text-slate-500">
-            Ghi nhận số dư đầu ca và đối soát doanh thu cuối ca.
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Doanh thu</h1>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+            Khai báo tiền đầu ca khi mở ca và tiền cuối ca khi chốt ca. Mỗi chi nhánh chỉ có một
+            khai báo cho mỗi ngày kinh doanh (giờ Việt Nam).
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 sm:self-auto">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" /> Ca Sáng
-          (07:00–15:00) · Đang mở
-        </div>
-      </div>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={loading}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          Tải lại
+        </button>
+      </section>
 
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-        <div className="space-y-4">
-          <section className="overflow-hidden rounded-xl border border-slate-200/80 border-t-2 border-t-[#0C66E4] bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
-                  <CircleDollarSign size={18} />
-                </span>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase text-[#0C66E4]">
-                    SCRUM-39 · Đầu ca
-                  </p>
-                  <h2 className="mt-0.5 text-sm font-bold text-slate-900">
-                    Ghi nhận số dư đầu ca
-                  </h2>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
-                <CheckCircle2 size={12} /> Đã xác nhận lúc 07:15
-              </span>
+      <section className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <label className="text-xs font-semibold text-slate-600">
+          Chi nhánh
+          <select
+            value={branchId}
+            onChange={(event) => setBranchId(event.target.value)}
+            className={`mt-1 ${inputClassName}`}
+          >
+            {branches.length === 0 && <option value="">Chưa có chi nhánh</option>}
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="text-[11px] text-slate-500">
+          Ngày kinh doanh hôm nay: <b className="text-slate-700">{today}</b>
+        </p>
+      </section>
+
+      {pageError && (
+        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <AlertTriangle size={16} />
+          {pageError}
+        </div>
+      )}
+
+      {note && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <Check size={16} />
+          {note}
+        </div>
+      )}
+
+      {difference !== null && (
+        <div
+          className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
+            difference < 0
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          <CircleDollarSign size={16} />
+          Doanh thu ca vừa chốt: <b className="tabular-nums">{formatCurrency(difference)}</b>{" "}
+          (âm là chốt thiếu so với tiền đầu ca)
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+              <Unlock size={18} />
+            </span>
+            <div>
+              <h2 className="font-bold text-slate-900">Mở ca hôm nay</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Số tiền mặt có trong két khi bắt đầu ngày.
+              </p>
             </div>
-            <div className="space-y-5 p-5">
-              <div className="flex items-center justify-between rounded-lg bg-[#F3F6FC] px-3 py-2.5">
-                <div>
-                  <p className="text-xs font-semibold text-slate-800">
-                    Trần Minh Tuấn
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-slate-500">
-                    Thu ngân chính · Ca 1
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-slate-500">
-                    Thời gian check-in
-                  </p>
-                  <p className="mt-0.5 text-[10px] font-semibold text-slate-700">
-                    06:58:24 (Hôm nay)
-                  </p>
-                </div>
-              </div>
-              <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label
-                    htmlFor="opening-total"
-                    className="text-[11px] font-semibold text-slate-700"
-                  >
-                    Số tiền mặt bàn giao (VND)
-                  </label>
-                  <span className="text-[10px] font-medium text-emerald-700">
-                    <Check size={12} className="mr-1 inline" />
-                    Khớp chính xác
-                  </span>
-                </div>
-                <div className="flex items-center rounded-lg border border-blue-100 bg-blue-50/60 px-3 focus-within:border-[#0C66E4]">
-                  <span className="mr-2 text-sm font-semibold text-[#0C66E4]">
-                    ₫
-                  </span>
-                  <input
-                    id="opening-total"
-                    className="w-full bg-transparent py-2.5 text-lg font-bold tabular-nums text-slate-900 outline-none"
-                    value={formatCurrency(openingTotal)}
-                    readOnly
-                  />
-                  <span className="text-[10px] font-semibold text-slate-400">
-                    VND
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[10px] italic text-slate-500">
-                  Số dư được tính tự động từ bảng kiểm đếm bên dưới.
-                </p>
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-[11px] font-semibold text-slate-700">
-                    Kiểm đếm mệnh giá tiền
-                  </label>
-                  <span className="text-[10px] text-slate-500">
-                    Tổng cộng:{" "}
-                    <b className="text-slate-700">
-                      {formatCurrency(openingTotal)} ₫
-                    </b>
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {denominations.map((item) => (
-                    <label
-                      key={item.value}
-                      className="rounded-lg border border-slate-200 bg-[#F8F9FF] px-2.5 py-2"
-                    >
-                      <span className="block text-[9px] font-medium text-slate-500">
-                        {item.label}
-                      </span>
-                      <span className="mt-1 flex items-center justify-between gap-1">
-                        <input
-                          aria-label={`Số tờ ${item.label}`}
-                          className="w-10 bg-transparent text-base font-bold text-slate-800 outline-none"
-                          type="number"
-                          min="0"
-                          value={counts[item.value] ?? 0}
-                          onChange={(event) =>
-                            setCounts({
-                              ...counts,
-                              [item.value]: Math.max(
-                                0,
-                                Number(event.target.value),
-                              ),
-                            })
-                          }
-                        />
-                        <span className="text-[9px] text-slate-400">tờ</span>
-                      </span>
-                      <span className="mt-1 block text-[9px] text-slate-500">
-                        {formatCurrency(item.value * (counts[item.value] ?? 0))}{" "}
-                        ₫
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label
-                  htmlFor="opening-note"
-                  className="mb-1.5 block text-[11px] font-semibold text-slate-700"
-                >
-                  Ghi chú bàn giao đầu ca
-                </label>
-                <textarea
-                  id="opening-note"
-                  rows={2}
-                  className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/10"
-                  placeholder="Ghi chú tình trạng bàn giao, niêm phong..."
+          </div>
+
+          {todayRecord ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-700">
+                Đã khai báo mở ca lúc {formatDateTime(todayRecord.created_at)}
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                {formatCurrency(todayRecord.open_amount)}
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Mỗi chi nhánh chỉ mở ca một lần mỗi ngày, nên biểu mẫu này đã đóng.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <label className="block text-xs font-semibold text-slate-600">
+                Tiền đầu ca (VND)
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={openAmount}
+                  onChange={(event) => setOpenAmount(event.target.value)}
+                  className={`mt-1 tabular-nums ${inputClassName}`}
                 />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold text-slate-700">
-                  Biên bản & hình ảnh két đầu ca
-                </label>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/70 p-3 transition-colors hover:border-[#0C66E4] hover:bg-blue-50/50">
-                  <span className="flex h-10 w-12 items-center justify-center rounded-md bg-slate-200 text-slate-500">
-                    <Camera size={18} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[10px] font-semibold text-slate-700">
-                      Biên bản kiểm két 07h15.jpg
-                    </span>
-                    <span className="mt-1 block text-[9px] text-slate-500">
-                      Tải lên lúc 07:14:12 · Chụp tại Camera Quầy 01
-                    </span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[9px] font-medium text-[#0C66E4]">
-                    <ImagePlus size={13} /> Thay ảnh
-                  </span>
-                  <input type="file" accept="image/*" className="sr-only" />
-                </label>
-              </div>
-              <div className="flex items-center justify-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-semibold text-blue-800">
-                <CheckCircle2 size={14} className="text-emerald-600" /> Đã chốt
-                & niêm phong đầu ca
-              </div>
-            </div>
-          </section>
-
-          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div>
-                <h2 className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                  <Clock3 size={15} className="text-[#0C66E4]" /> Lịch sử đối
-                  soát 3 ca gần nhất
-                </h2>
-                <p className="mt-1 text-[9px] text-slate-500">
-                  Đối chiếu tự động giữa doanh thu POS và tiền mặt nộp két
-                </p>
-              </div>
-              <button className="text-[9px] font-semibold text-[#0C66E4] hover:underline">
-                Xem toàn bộ →
+              </label>
+              <button
+                type="button"
+                onClick={() => void declareOpen()}
+                disabled={busy !== "" || !branchId}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy === "open" ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Unlock size={15} />
+                )}
+                Khai báo mở ca
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[540px] text-left text-[9px]">
-                <thead className="bg-[#F3F6FC] font-semibold uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2.5">Mã ca / Phiên làm</th>
-                    <th className="px-3 py-2.5">Thu ngân giao ca</th>
-                    <th className="px-3 py-2.5 text-right">Đầu ca</th>
-                    <th className="px-3 py-2.5 text-right">Tổng POS</th>
-                    <th className="px-3 py-2.5 text-right">Tiền nộp thực tế</th>
-                    <th className="px-3 py-2.5">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {recentShifts.map((shift) => (
-                    <tr key={shift.code}>
-                      <td className="px-3 py-2.5">
-                        <b className="text-[#0C66E4]">{shift.code}</b>
-                        <span className="mt-0.5 block text-slate-500">
-                          {shift.shift}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 font-medium text-slate-700">
-                        {shift.lead}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        {shift.opening}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        {shift.pos}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                        {shift.actual}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
-                          {shift.variance}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+          )}
+        </section>
 
-        <section className="overflow-hidden rounded-xl border border-slate-200/80 border-t-2 border-t-[#0C66E4] bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
-                <ReceiptText size={18} />
-              </span>
-              <div>
-                <p className="text-[10px] font-semibold uppercase text-[#0C66E4]">
-                  SCRUM-40 · Cuối ca
-                </p>
-                <h2 className="mt-0.5 text-sm font-bold text-slate-900">
-                  Đối soát & chốt doanh thu
-                </h2>
-              </div>
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800">
-              <Clock3 size={12} /> Cần hoàn tất trước 15:30
+        <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+              <LockKeyhole size={18} />
             </span>
-          </div>
-          <div className="space-y-5 p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold text-slate-700">
-                Doanh thu ghi nhận trên hệ thống POS
-              </p>
-              <span className="text-[9px] text-slate-400">
-                Cập nhật lúc 14:55
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-lg bg-[#F3F6FC] p-3">
-                <p className="text-[9px] font-medium text-slate-500">
-                  <CircleDollarSign
-                    size={11}
-                    className="mr-1 inline text-[#0C66E4]"
-                  />
-                  Tiền mặt
-                </p>
-                <p className="mt-1.5 text-sm font-bold tabular-nums text-slate-900">
-                  14.900.000
-                </p>
-                <p className="text-[9px] text-slate-400">₫</p>
-              </div>
-              <div className="rounded-lg bg-[#F3F6FC] p-3">
-                <p className="text-[9px] font-medium text-slate-500">
-                  <Landmark
-                    size={11}
-                    className="mr-1 inline text-emerald-600"
-                  />
-                  VietQR
-                </p>
-                <p className="mt-1.5 text-sm font-bold tabular-nums text-slate-900">
-                  26.430.000
-                </p>
-                <p className="text-[9px] text-slate-400">₫</p>
-              </div>
-              <div className="rounded-lg bg-[#F3F6FC] p-3">
-                <p className="text-[9px] font-medium text-slate-500">
-                  <ReceiptText
-                    size={11}
-                    className="mr-1 inline text-slate-500"
-                  />
-                  Thẻ POS
-                </p>
-                <p className="mt-1.5 text-sm font-bold tabular-nums text-slate-900">
-                  8.120.000
-                </p>
-                <p className="text-[9px] text-slate-400">₫</p>
-              </div>
-            </div>
             <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label
-                  htmlFor="closing-cash"
-                  className="text-[11px] font-semibold text-slate-700"
-                >
-                  Tổng tiền mặt thực tế trong két cuối ca
-                </label>
-                <span className="text-[9px] text-slate-500">
-                  Bao gồm số dư đầu ca
-                </span>
-              </div>
-              <div className="flex items-center rounded-lg border border-blue-100 bg-blue-50/60 px-3 focus-within:border-[#0C66E4]">
-                <span className="mr-2 text-sm font-semibold text-[#0C66E4]">
-                  ₫
-                </span>
-                <input
-                  id="closing-cash"
-                  type="number"
-                  min="0"
-                  value={closingCash}
-                  onChange={(event) =>
-                    setClosingCash(Math.max(0, Number(event.target.value)))
-                  }
-                  className="w-full bg-transparent py-2.5 text-lg font-bold tabular-nums text-slate-900 outline-none"
-                />
-                <span className="text-[10px] font-semibold text-slate-400">
-                  VND
-                </span>
-                <button
-                  type="button"
-                  title="Làm mới dữ liệu POS"
-                  className="ml-2 rounded-md p-1.5 text-[#0C66E4] hover:bg-blue-100"
-                >
-                  <RefreshCw size={14} />
-                </button>
-              </div>
-              <div className="mt-1.5 flex justify-between text-[9px] text-slate-500">
-                <span>
-                  Tiền kỳ vọng trong két:{" "}
-                  <b className="text-slate-700">18.400.000 ₫</b>
-                </span>
-                <span
-                  className={
-                    variance < 0
-                      ? "font-semibold text-rose-600"
-                      : "font-semibold text-emerald-700"
-                  }
-                >
-                  Tự động đối soát
-                </span>
-              </div>
+              <h2 className="font-bold text-slate-900">Chốt ca</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Đếm mệnh giá hoặc nhập thẳng tổng tiền cuối ca.
+              </p>
             </div>
+          </div>
 
-            {variance < 0 ? (
-              <div
-                className="rounded-lg border border-rose-200 bg-rose-50 p-4"
-                role="alert"
-              >
-                <div className="flex items-start gap-2.5">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
-                    <AlertTriangle size={15} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-rose-800">
-                      Chênh lệch phát hiện: {formatCurrency(variance)} ₫
-                    </p>
-                    <p className="mt-1 text-[10px] font-bold uppercase text-rose-700">
-                      Thiếu hụt tiền mặt
-                    </p>
-                    <p className="mt-1.5 text-[10px] leading-relaxed text-rose-800">
-                      Số tiền thực tế kiểm đếm ({formatCurrency(closingCash)} ₫)
-                      thấp hơn số tiền theo sổ sách (18.400.000 ₫). Vui lòng
-                      giải trình trước khi chốt ca.
-                    </p>
-                    <label
-                      htmlFor="close-note"
-                      className="mt-3 block text-[10px] font-semibold text-rose-800"
+          {!todayRecord ? (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Chưa có khai báo mở ca cho hôm nay, nên chưa thể chốt. Hãy khai báo mở ca trước.
+            </p>
+          ) : todayRecord.closed_at ? (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-xs font-semibold text-emerald-800">
+                Đã chốt ca lúc {formatDateTime(todayRecord.closed_at)}
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                <span className="text-slate-600">
+                  Đầu ca
+                  <b className="mt-0.5 block tabular-nums text-slate-900">
+                    {formatCurrency(todayRecord.open_amount)}
+                  </b>
+                </span>
+                <span className="text-slate-600">
+                  Cuối ca
+                  <b className="mt-0.5 block tabular-nums text-slate-900">
+                    {formatCurrency(todayRecord.close_amount ?? 0)}
+                  </b>
+                </span>
+                <span className="text-slate-600">
+                  Doanh thu
+                  <b className="mt-0.5 block tabular-nums text-[#0C66E4]">
+                    {formatCurrency(
+                      (todayRecord.close_amount ?? 0) - todayRecord.open_amount,
+                    )}
+                  </b>
+                </span>
+              </div>
+              {todayRecord.close_note && (
+                <p className="mt-2 text-[11px] text-slate-600">
+                  Ghi chú: {todayRecord.close_note}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-lg border border-slate-200">
+                <div className="grid grid-cols-2 gap-x-4 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <span>Mệnh giá</span>
+                  <span className="text-right">Số tờ</span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {DENOMINATIONS.map((denomination) => (
+                    <div
+                      key={denomination}
+                      className="grid grid-cols-2 items-center gap-x-4 px-3 py-1.5"
                     >
-                      Giải trình lý do chênh lệch{" "}
-                      <span className="text-rose-600">*</span>
-                    </label>
-                    <textarea
-                      id="close-note"
-                      rows={3}
-                      value={closeNote}
-                      onChange={(event) => setCloseNote(event.target.value)}
-                      className="mt-1.5 w-full resize-none rounded-md border border-rose-200 bg-white px-3 py-2 text-[10px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/10"
-                      placeholder="Ví dụ: Bàn giao sai mệnh giá hoặc đơn POS chưa đồng bộ..."
-                    />
-                  </div>
+                      <span className="text-xs tabular-nums text-slate-600">
+                        {currency.format(denomination)} ₫
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={counts[denomination] ?? 0}
+                        onChange={(event) =>
+                          setCount(denomination, Number(event.target.value))
+                        }
+                        aria-label={`Số tờ ${denomination}`}
+                        className="w-full rounded border border-slate-200 px-2 py-1 text-right text-xs tabular-nums outline-none focus:border-[#0C66E4]"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs">
+                  <span className="font-semibold text-slate-600">Tiền mặt đếm được</span>
+                  <b className="tabular-nums text-slate-900">
+                    {formatCurrency(countedTotal)}
+                  </b>
                 </div>
               </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[10px] font-semibold text-emerald-800">
-                <CheckCircle2 size={15} /> Số tiền mặt đã khớp với sổ sách.
-              </div>
-            )}
 
-            <div>
-              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-700">
-                <span>
-                  Bằng chứng đối soát (Sao kê máy POS & ảnh két cuối ca)
-                </span>
-                <span className="text-rose-500">*</span>
-              </div>
-              <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/60 px-4 py-5 text-center transition-colors hover:border-[#0C66E4] hover:bg-blue-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#0C66E4] shadow-sm">
-                  <Upload size={16} />
-                </span>
-                <span className="text-[10px] font-semibold text-slate-700">
-                  Kéo thả hình ảnh vào đây hoặc{" "}
-                  <b className="text-[#0C66E4]">Duyệt tệp máy tính</b>
-                </span>
-                <span className="text-[9px] text-slate-500">
-                  Hỗ trợ JPG, PNG, HEIC hoặc PDF · Tối đa 15MB/tệp
-                </span>
+              <label className="block text-xs font-semibold text-slate-600">
+                Tổng tiền cuối ca (VND) — tự tính từ mệnh giá, có thể sửa
                 <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple
-                  className="sr-only"
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={closeAmount}
+                  onChange={(event) => setCloseAmount(event.target.value)}
+                  className={`mt-1 tabular-nums ${inputClassName}`}
                 />
               </label>
-              <p className="mt-2 flex items-center gap-1.5 text-[9px] text-emerald-700">
-                <CheckCircle2 size={11} /> Đã đính kèm sao kê POS Vietcombank
-                (14:52)
-              </p>
-            </div>
-            <div>
-              <label
-                htmlFor="handover-note"
-                className="mb-1.5 block text-[11px] font-semibold text-slate-700"
-              >
-                Ghi chú phát sinh chung cho ca tiếp theo
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Ghi chú chốt ca (không bắt buộc)
+                <textarea
+                  value={closeNote}
+                  onChange={(event) => setCloseNote(event.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Ví dụ: thiếu 50.000 ₫ do thối nhầm cho khách."
+                  className={`mt-1 resize-none ${inputClassName}`}
+                />
               </label>
-              <input
-                id="handover-note"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#0C66E4]"
-                placeholder="Ghi nhận tồn nguyên vật liệu, quỹ thu ngân, giấy in bill sắp hết..."
-              />
+
+              <button
+                type="button"
+                onClick={() => void declareClose()}
+                disabled={busy !== ""}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy === "close" ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <LockKeyhole size={15} />
+                )}
+                Chốt ca
+              </button>
             </div>
-            <button
-              type="button"
-              disabled={variance < 0 && !closeNote.trim()}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              <CheckCircle2 size={15} /> Chốt doanh thu & bàn giao ca
-            </button>
-          </div>
+          )}
         </section>
       </div>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Khai báo 7 ngày gần đây</h2>
+            <p className="mt-0.5 text-[10px] text-slate-500">
+              Mỗi dòng là một ngày kinh doanh của chi nhánh đang chọn.
+            </p>
+          </div>
+          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+            <Wallet size={12} />
+            {records.length} bản ghi
+          </span>
+        </div>
+
+        {recordsLoading ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+            <Loader2 size={16} className="animate-spin" />
+            Đang tải khai báo doanh thu...
+          </div>
+        ) : records.length === 0 ? (
+          <p className="px-5 py-12 text-center text-xs text-slate-400">
+            Chưa có khai báo doanh thu nào cho chi nhánh này trong 7 ngày gần đây.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Ngày kinh doanh</th>
+                  <th className="px-4 py-3 text-right font-semibold">Tiền đầu ca</th>
+                  <th className="px-4 py-3 text-right font-semibold">Tiền cuối ca</th>
+                  <th className="px-4 py-3 text-right font-semibold">Doanh thu</th>
+                  <th className="px-4 py-3 font-semibold">Trạng thái</th>
+                  <th className="px-4 py-3 font-semibold">Chốt lúc</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {records.map((record) => {
+                  const isClosed = Boolean(record.closed_at);
+                  const revenue = isClosed
+                    ? (record.close_amount ?? 0) - record.open_amount
+                    : null;
+
+                  return (
+                    <tr key={record.id} className="hover:bg-blue-50/40">
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-800">
+                        {getBusinessDay(new Date(record.created_at))}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
+                        {formatCurrency(record.open_amount)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
+                        {isClosed ? formatCurrency(record.close_amount ?? 0) : "—"}
+                      </td>
+                      <td
+                        className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${
+                          revenue !== null && revenue < 0
+                            ? "text-rose-600"
+                            : "text-[#0C66E4]"
+                        }`}
+                      >
+                        {revenue === null ? "—" : formatCurrency(revenue)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span
+                          className={`rounded-full px-2 py-1 text-[9px] font-semibold ${
+                            isClosed
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {isClosed ? "Đã chốt" : "Đang mở"}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
+                        {formatDateTime(record.closed_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="border-t border-slate-100 px-4 py-3 text-[10px] text-slate-500">
+          Doanh thu chỉ được tính cho các ca <b>đã chốt</b> — đó là con số xuất hiện trong Báo cáo
+          và trên Tổng quan.
+        </div>
+      </section>
     </div>
   );
 }

@@ -159,6 +159,7 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `POST /api/revenue/open`             | session           | `daily_revenue`               | Body `{ branch_id, open_amount }` → `201`; `409` if the branch already declared today; `400` on bad input                                            |
 | `PUT /api/revenue/close`             | session           | `daily_revenue`               | Body `{ branch_id, close_amount, close_note?, close_image_url? }` → `{ revenue, revenue_difference }`; `404` without an opening record               |
 | `GET /api/revenue/report`            | session           | RPC `get_revenue_report`      | `branch_id?`, `period=day\|week\|month\|quarter\|year` (default `day`), `date=YYYY-MM-DD`; returns series, summary and period-over-period comparison |
+| `GET /api/revenue`                   | session           | `daily_revenue`               | Row-level sibling of the report: `branch_id?`, `days=1..31` (default 7, Asia/Bangkok business days), `status=open\|closed\|all` → the records, newest first, capped at 100 |
 | `GET /api/requests`                  | session           | `requests`                    | Approval queue (SCRUM-41) with the requester name embedded; filters `status`, `branch_id` (the value `all` disables a filter)                        |
 | `PATCH /api/requests/{id}/review`    | session + role    | `requests`                    | `{ status: "APPROVED" \| "REJECTED", reject_reason? }` → the updated request; a reason is required to reject; `403` unless the caller is `OWNER`/`CHU` |
 | `GET /api/shifts`                    | session           | `shifts` (catalogue)          | The shift templates (`Ca sáng` 08:00–17:00, ...) that `/api/schedules` assigns; `branch_id = null` means every branch                          |
@@ -370,15 +371,21 @@ files you touched, and exercising the endpoint or page — plus `/api-docs` when
 
 An honest snapshot of what is real and what is still a prototype:
 
-- **Supabase-backed and real:** revenue open / close / report, branches (list, create, update with the GPS
+- **Supabase-backed and real:** revenue open / close / report / record list, branches (list, create, update
+  with the GPS
   geofence), facilities (per-branch equipment registry), the shift catalogue and the weekly schedule,
   staff requests (list + role-gated approve/reject), attendance (timesheet, geofence verdict, complaints,
   manager verification), the live employee status RPC, notifications and notification settings, quick
   search, user lookup, and the AI assistant endpoint.
 - **No demo data left:** `lib/mock/adminStore.ts` was deleted together with its last consumer, once
   trạng thái nhân viên moved to `get_employee_status`. Every screen now reads a table or an RPC.
-- **UI prototypes:** the revenue, reports, notifications and chat screens render hard-coded demo data, and
-  the header search simulates its results instead of calling `GET /api/search`. `app/branches/page.tsx` is
+- **UI prototypes:** the chat screen renders hard-coded demo data, and the header search simulates its
+  results instead of calling `GET /api/search`. The four navigation screens are wired: `/` (Tổng quan)
+  composes `get_employee_status`, the request queue, today's timesheet and the monthly revenue report;
+  `/revenue` opens and closes the business day per branch and lists the last week from `GET /api/revenue`;
+  `/reports` is a thin view over `get_revenue_report` with period, branch and date filters; `/notifications`
+  reads the paginated feed, marks items read one call at a time (there is no bulk endpoint) and edits the
+  channel settings. `app/branches/page.tsx` is
   wired to `/api/branches`; it deliberately has no branch-manager picker yet, because choosing a manager
   needs a staff-list endpoint and exposing staff rows is a PII decision (`AGENTS.md` → ask first). The
   `branches.manager_id` column and the API field already exist, so only the picker is missing.

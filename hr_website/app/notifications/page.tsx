@@ -1,494 +1,586 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
-  AlarmClock,
+  AlertTriangle,
   Bell,
-  CalendarDays,
   Check,
-  ChevronRight,
+  CheckCheck,
   CircleDollarSign,
+  ClipboardCheck,
   FileText,
-  Lightbulb,
-  Settings,
-  ShieldAlert,
+  Loader2,
+  RefreshCw,
+  Settings2,
   X,
 } from "lucide-react";
-import { useState } from "react";
 
-const mockNotifications = [
-  {
-    id: 1,
-    title: "Thay đổi ca làm việc ngày mai",
-    category: "Ca làm việc",
-    message:
-      "Bạn đã được phân công hỗ trợ ca tối từ 18:00 – 23:00 tại chi nhánh Quận 1 thay thế cho nhân viên vắng đột xuất.",
-    time: "25 phút trước",
-    read: false,
-    type: "schedule",
-    action: "Xem lịch chi tiết",
-  },
-  {
-    id: 2,
-    title: "Đơn xin nghỉ phép đã được duyệt",
-    category: "Đơn từ",
-    message:
-      "Quản lý Nguyễn Thu Trang đã phê duyệt đơn nghỉ phép #HR-1049 (Kỳ nghỉ phép năm: 2 ngày, 28/10 – 29/10).",
-    time: "2 giờ trước",
-    read: false,
-    type: "request",
-    action: "Tải giấy phép số",
-  },
-  {
-    id: 3,
-    title: "Cảnh báo chênh lệch quỹ tại ca tối",
-    category: "Cảnh báo kiểm quỹ",
-    message:
-      "Bàn giao két ca tối ngày 24/10 tại Quầy POS-02 ghi nhận lệch thực tế: -150.000 ₫ so với doanh thu phần mềm. Vui lòng đối soát lại biên bản kiểm đếm.",
-    time: "2 ngày trước",
-    read: false,
-    type: "alert",
-    action: "Đối soát biên bản ngay",
-  },
-  {
-    id: 4,
-    title: "Bảng lương T10/2026 đã được lập",
-    category: "Kế toán / Lương",
-    message:
-      "Phiếu lương chi tiết kỳ 2 đã sẵn sàng để đối soát. Hạn chót gửi khiếu nại định mức giờ công và thưởng KPI là 17:00 ngày 30/10/2026.",
-    time: "1 ngày trước",
-    read: true,
-    type: "salary",
-    action: "Tra cứu phiếu lương",
-  },
-  {
-    id: 5,
-    title: "Xác nhận tăng ca ngày Chủ Nhật",
-    category: "Tăng ca",
-    message:
-      "Bạn đã đăng ký thành công 3,5 giờ tăng ca (hệ số 2.0) trong sự kiện Flash Sale cuối tuần tại Chi nhánh Q.1.",
-    time: "3 ngày trước",
-    read: true,
-    type: "schedule",
-    action: "Chi tiết bảng chấm công",
-  },
-  {
-    id: 6,
-    title: "Hướng dẫn quy trình vệ sinh & đóng quầy mới",
-    category: "Nội bộ",
-    message:
-      "Quy chuẩn 55 kiểm kê tồn mặt và bàn giao ca đêm mới sẽ được áp dụng chính thức từ ngày 01/11/2026.",
-    time: "5 ngày trước",
-    read: true,
-    type: "request",
-    action: "Tải cẩm nang quy trình",
-  },
-];
+import type {
+  Notification,
+  PaginatedNotifications,
+} from "@/lib/domain/entities/Notification";
+import type { NotificationSetting } from "@/lib/domain/entities/NotificationSetting";
 
-const notificationTabs = [
-  { id: "all", label: "Tất cả" },
-  { id: "unread", label: "Chưa đọc" },
-  { id: "schedule", label: "Lịch làm việc" },
-  { id: "salary", label: "Lương & Thưởng" },
-  { id: "request", label: "Đơn từ xét duyệt" },
-  { id: "alert", label: "Cảnh báo" },
-];
+const PAGE_SIZE = 20;
+
+const CHANNEL_LABELS: Record<string, string> = {
+  in_app: "Trong ứng dụng",
+  email: "Email",
+  push: "Thông báo đẩy (mobile)",
+};
+
+const TYPE_ICONS: Record<string, typeof Bell> = {
+  REQUEST: FileText,
+  REVENUE: CircleDollarSign,
+  ATTENDANCE: ClipboardCheck,
+};
+
+function formatDateTime(value: string): string {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(parsed);
+}
+
+function statusMessage(status: number, serverMessage?: string): string {
+  if (status === 401) {
+    return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+  }
+
+  if (status === 404) {
+    return "Thông báo này không còn tồn tại.";
+  }
+
+  return serverMessage ?? "Không thực hiện được thao tác. Vui lòng thử lại.";
+}
+
+type ChannelToggle = { channel: string; enabled: boolean };
+
+/** The channels the settings drawer always shows, whether or not a row exists yet. */
+const KNOWN_CHANNELS = ["in_app", "email", "push"];
+
+function mergeChannels(rows: NotificationSetting[]): ChannelToggle[] {
+  return KNOWN_CHANNELS.map((channel) => ({
+    channel,
+    enabled: rows.find((row) => row.channel === channel)?.enabled ?? false,
+  }));
+}
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications);
-  const [activeTab, setActiveTab] = useState("all");
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [tab, setTab] = useState<"all" | "unread" | "read">("all");
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [markingAll, setMarkingAll] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState({
-    schedule: true,
-    salary: true,
-    requests: false,
-  });
+  const [channels, setChannels] = useState<ChannelToggle[]>([]);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const filteredNotifications = notifications.filter((notification) => {
-    if (activeTab === "all") return true;
-    if (activeTab === "unread") return !notification.read;
-    return notification.type === activeTab;
-  });
+  useEffect(() => {
+    let cancelled = false;
 
-  const markAllAsRead = () => {
-    setNotifications((current) =>
-      current.map((notification) => ({ ...notification, read: true })),
+    async function load(): Promise<{
+      data: Notification[];
+      total: number;
+      error: string | null;
+    }> {
+      const response = await fetch(
+        `/api/notifications?page=${page}&page_size=${PAGE_SIZE}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        return {
+          data: [],
+          total: 0,
+          error: statusMessage(response.status, data?.error),
+        };
+      }
+
+      const payload = (await response.json()) as PaginatedNotifications;
+
+      return { data: payload.data, total: payload.total, error: null };
+    }
+
+    load()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        setNotifications(result.data);
+        setTotal(result.total);
+        setPageError(result.error ?? "");
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setNotifications([]);
+        setTotal(0);
+        setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, reloadToken]);
+
+  function refresh() {
+    setLoading(true);
+    setPageError("");
+    setReloadToken((token) => token + 1);
+  }
+
+  function openSettings() {
+    setSettingsOpen(true);
+    setSettingsLoading(true);
+    setSettingsError("");
+    setSettingsSaved(false);
+  }
+
+  // The drawer loads its own data on open; the async body keeps setState out of the effect body.
+  useEffect(() => {
+    if (!settingsOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load(): Promise<{
+      settings: NotificationSetting[];
+      error: string | null;
+    }> {
+      const response = await fetch("/api/notifications/settings", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        return {
+          settings: [],
+          error: statusMessage(response.status, data?.error),
+        };
+      }
+
+      const data = (await response.json()) as NotificationSetting[];
+
+      return { settings: Array.isArray(data) ? data : [], error: null };
+    }
+
+    load()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        setChannels(mergeChannels(result.settings));
+        setSettingsError(result.error ?? "");
+        setSettingsLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setSettingsError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+        setSettingsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsOpen]);
+
+  async function markRead(notification: Notification) {
+    if (notification.is_read || busyId) {
+      return;
+    }
+
+    setBusyId(notification.id);
+    setPageError("");
+
+    try {
+      const response = await fetch(
+        `/api/notifications/${notification.id}/read`,
+        { method: "PATCH" },
+      );
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setPageError(statusMessage(response.status, data?.error));
+        return;
+      }
+
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, is_read: true } : item,
+        ),
+      );
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function markAllRead() {
+    const unread = notifications.filter((item) => !item.is_read);
+
+    if (markingAll || unread.length === 0) {
+      return;
+    }
+
+    setMarkingAll(true);
+    setPageError("");
+
+    try {
+      // There is no bulk endpoint, so this is one request per unread notification of the current
+      // page. Marking read is idempotent, so a retry is harmless.
+      const responses = await Promise.all(
+        unread.map((item) =>
+          fetch(`/api/notifications/${item.id}/read`, { method: "PATCH" }),
+        ),
+      );
+      const failed = responses.filter((response) => !response.ok).length;
+
+      if (failed > 0) {
+        setPageError(
+          `Chỉ đánh dấu được ${unread.length - failed}/${unread.length} thông báo. Vui lòng thử lại.`,
+        );
+      }
+
+      refresh();
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setMarkingAll(false);
+    }
+  }
+
+  async function toggleChannel(notificationChannel: string, enabled: boolean) {
+    const next = channels.map((item) =>
+      item.channel === notificationChannel ? { ...item, enabled } : item,
     );
-  };
 
-  const markAsRead = (id: number) => {
-    setNotifications((current) =>
-      current.map((notification) =>
-        notification.id === id ? { ...notification, read: true } : notification,
-      ),
-    );
-  };
+    setChannels(next);
+    setSettingsError("");
+    setSettingsSaved(false);
 
-  const toggleSetting = (key: keyof typeof settings) => {
-    setSettings((current) => ({ ...current, [key]: !current[key] }));
-  };
+    try {
+      const response = await fetch("/api/notifications/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: next }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setSettingsError(statusMessage(response.status, data?.error));
+        return;
+      }
+
+      setSettingsSaved(true);
+    } catch {
+      setSettingsError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    }
+  }
+
+  const unreadCount = notifications.filter((item) => !item.is_read).length;
+  const visible = notifications.filter((item) =>
+    tab === "all" ? true : tab === "unread" ? !item.is_read : item.is_read,
+  );
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Trung tâm điều hành thông báo / SCRUM-48
+            Hệ thống / SCRUM-48
           </p>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Trung tâm Thông báo Hệ thống
-          </h1>
-          <span className="mt-2 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-semibold text-blue-800">
-            {notifications.filter((notification) => !notification.read).length}{" "}
-            thông báo chưa đọc
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Thông báo</h1>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+            Thông báo trong ứng dụng của chính tài khoản đang đăng nhập: đơn từ, doanh thu và chấm
+            công. Tổng {total} thông báo, trong đó {unreadCount} chưa đọc trên trang này.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            Tải lại
+          </button>
+          <button
+            type="button"
+            onClick={openSettings}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Settings2 size={14} /> Cài đặt kênh nhận
+          </button>
+          <button
+            type="button"
+            onClick={() => void markAllRead()}
+            disabled={markingAll || unreadCount === 0}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {markingAll ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <CheckCheck size={14} />
+            )}
+            Đánh dấu trang này đã đọc
+          </button>
+        </div>
+      </section>
+
+      {pageError && (
+        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <AlertTriangle size={16} />
+          {pageError}
+        </div>
+      )}
+
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
+          {(
+            [
+              { value: "all", label: "Tất cả" },
+              { value: "unread", label: "Chưa đọc" },
+              { value: "read", label: "Đã đọc" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setTab(option.value)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                tab === option.value
+                  ? "bg-[#0C66E4] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+          <span className="ml-auto text-[10px] text-slate-500">
+            Trang {page}/{lastPage} · bộ lọc chỉ áp dụng trên trang hiện tại
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={markAllAsRead}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-[#0C66E4] transition-colors hover:bg-blue-50"
-          >
-            <Check size={14} /> Đánh dấu tất cả đã đọc
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            title="Cài đặt thông báo"
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-          >
-            <Settings size={16} />
-          </button>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
-        <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-3">
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-              <label className="flex max-w-sm flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2">
-                <Bell size={14} className="text-slate-400" />
-                <input
-                  aria-label="Tìm thông báo"
-                  className="w-full bg-transparent text-[10px] outline-none placeholder:text-slate-400"
-                  placeholder="Tìm theo tiêu đề, mã ca, số phiếu..."
-                />
-              </label>
-              <div
-                className="flex flex-1 gap-1 overflow-x-auto"
-                role="tablist"
-                aria-label="Phân loại thông báo"
-              >
-                {notificationTabs.map((tab) => {
-                  const count =
-                    tab.id === "all"
-                      ? notifications.length
-                      : tab.id === "unread"
-                        ? notifications.filter(
-                            (notification) => !notification.read,
-                          ).length
-                        : notifications.filter(
-                            (notification) => notification.type === tab.id,
-                          ).length;
-                  return (
-                    <button
-                      key={tab.id}
-                      role="tab"
-                      aria-selected={activeTab === tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`shrink-0 rounded-md px-2.5 py-2 text-[9px] font-medium transition-colors ${activeTab === tab.id ? "bg-[#0C66E4] text-white" : "text-slate-600 hover:bg-slate-100"}`}
-                    >
-                      {tab.label}{" "}
-                      <span
-                        className={
-                          activeTab === tab.id
-                            ? "ml-0.5 text-blue-100"
-                            : "ml-0.5 text-slate-400"
-                        }
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+            <Loader2 size={16} className="animate-spin" />
+            Đang tải thông báo...
           </div>
+        ) : visible.length === 0 ? (
+          <p className="px-5 py-12 text-center text-xs text-slate-400">
+            {notifications.length === 0
+              ? "Chưa có thông báo nào. Thông báo được tạo khi có đơn từ cần duyệt, ca được chốt doanh thu hoặc chấm công cần xác minh."
+              : "Không có thông báo nào khớp với bộ lọc này trên trang hiện tại."}
+          </p>
+        ) : (
           <ul className="divide-y divide-slate-100">
-            {filteredNotifications.map((notification) => {
-              const Icon =
-                notification.type === "schedule"
-                  ? CalendarDays
-                  : notification.type === "salary"
-                    ? CircleDollarSign
-                    : notification.type === "alert"
-                      ? ShieldAlert
-                      : FileText;
-              const isAlert = notification.type === "alert";
+            {visible.map((item) => {
+              const Icon = TYPE_ICONS[item.type] ?? Bell;
+
               return (
                 <li
-                  key={notification.id}
-                  className={`relative flex gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 ${!notification.read ? "bg-blue-50/35" : ""} ${isAlert && !notification.read ? "border-l-[3px] border-l-rose-600" : ""}`}
+                  key={item.id}
+                  className={`flex items-start gap-3 px-4 py-3.5 ${
+                    item.is_read ? "" : "bg-blue-50/40"
+                  }`}
                 >
                   <span
-                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isAlert ? "bg-rose-100 text-rose-700" : notification.read ? "bg-slate-100 text-slate-500" : "bg-blue-100 text-[#0C66E4]"}`}
+                    className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      item.is_read
+                        ? "bg-slate-100 text-slate-500"
+                        : "bg-blue-50 text-[#0C66E4]"
+                    }`}
                   >
-                    <Icon size={17} />
+                    <Icon size={16} />
                   </span>
+
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[8px] font-semibold ${isAlert ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-800"}`}
-                      >
-                        {notification.category}
-                      </span>
-                      <h2
-                        className={`text-xs font-bold ${isAlert ? "text-rose-800" : "text-slate-900"}`}
-                      >
-                        {notification.title}
-                      </h2>
-                    </div>
-                    <p
-                      className={`mt-1.5 text-[10px] leading-relaxed ${isAlert ? "text-rose-800" : "text-slate-600"}`}
-                    >
-                      {notification.message}
-                    </p>
-                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                      <span className="flex items-center gap-1 text-[9px] text-slate-400">
-                        <AlarmClock size={11} />
-                        {notification.time}
-                      </span>
-                      <button
-                        onClick={() => markAsRead(notification.id)}
-                        className={`rounded-md px-2 py-1 text-[9px] font-semibold transition-colors ${isAlert ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-blue-50 text-[#0C66E4] hover:bg-blue-100"}`}
-                      >
-                        {notification.action}
-                      </button>
-                      {notification.type === "schedule" && (
-                        <button
-                          onClick={() => markAsRead(notification.id)}
-                          className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-600 hover:bg-slate-200"
-                        >
-                          Phản hồi quản lý
-                        </button>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {item.title}
+                      </p>
+                      {!item.is_read && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#0C66E4]" />
                       )}
                     </div>
+                    <p className="mt-0.5 whitespace-pre-line text-xs text-slate-600">
+                      {item.body}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {formatDateTime(item.created_at)} · {item.type}
+                    </p>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end justify-between">
-                    <span className="whitespace-nowrap text-[9px] text-slate-400">
-                      {notification.time}
-                    </span>
-                    {!notification.read && (
-                      <span
-                        className="mt-3 h-2 w-2 rounded-full bg-[#0C66E4]"
-                        aria-label="Chưa đọc"
-                      />
-                    )}
-                  </div>
+
+                  {!item.is_read && (
+                    <button
+                      type="button"
+                      onClick={() => void markRead(item)}
+                      disabled={busyId === item.id}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {busyId === item.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Check size={12} />
+                      )}
+                      Đã đọc
+                    </button>
+                  )}
                 </li>
               );
             })}
-            {filteredNotifications.length === 0 && (
-              <li className="px-5 py-12 text-center text-xs text-slate-500">
-                Không có thông báo trong mục này.
-              </li>
-            )}
           </ul>
-          <div className="border-t border-slate-100 px-4 py-3 text-center">
-            <button className="text-[10px] font-semibold text-[#0C66E4] hover:underline">
-              Xem các thông báo cũ hơn{" "}
-              <ChevronRight size={12} className="ml-1 inline" />
+        )}
+
+        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+          <span className="text-[10px] text-slate-500">
+            {total === 0
+              ? "Không có thông báo"
+              : `Hiển thị ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + notifications.length} trên tổng ${total}`}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setPage((current) => Math.max(1, current - 1));
+              }}
+              disabled={page <= 1 || loading}
+              className="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+            >
+              ‹ Trước
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setPage((current) => Math.min(lastPage, current + 1));
+              }}
+              disabled={page >= lastPage || loading}
+              className="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+            >
+              Sau ›
             </button>
           </div>
-        </section>
-
-        <aside className="space-y-4">
-          <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Tình trạng tiếp nhận
-              </h2>
-              <span className="flex items-center gap-1.5 text-[9px] font-semibold text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Kênh AI trực tuyến
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-[#0C66E4]">
-                NT
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900">
-                  Nguyễn Thu Trang
-                </p>
-                <p className="mt-0.5 truncate text-[9px] text-slate-500">
-                  Trưởng nhóm Điều phối Nhân sự
-                </p>
-                <p className="mt-0.5 text-[9px] font-medium text-[#0C66E4]">
-                  Khu vực: TP. Hồ Chí Minh
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 rounded-lg bg-[#F3F6FC] p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[9px] font-semibold text-slate-700">
-                  Mật độ thông báo tuần
-                </p>
-                <span className="text-[9px] text-slate-500">38 sự kiện</span>
-              </div>
-              <div className="mt-3 flex h-16 items-end justify-between gap-1.5">
-                {[
-                  { day: "T2", height: 42 },
-                  { day: "T3", height: 58 },
-                  { day: "T4", height: 36 },
-                  { day: "T5", height: 82 },
-                  { day: "T6", height: 50 },
-                  { day: "T7", height: 28 },
-                  { day: "CN", height: 18 },
-                ].map((item) => (
-                  <div
-                    key={item.day}
-                    className="flex h-full flex-1 flex-col items-center justify-end gap-1.5"
-                  >
-                    <div
-                      className={`w-full max-w-5 rounded-t-sm ${item.day === "T5" ? "bg-[#0C66E4]" : "bg-blue-200"}`}
-                      style={{ height: `${item.height}%` }}
-                    />
-                    <span
-                      className={`text-[8px] ${item.day === "T5" ? "font-bold text-[#0C66E4]" : "text-slate-400"}`}
-                    >
-                      {item.day}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <h2 className="flex items-center gap-2 text-xs font-bold text-slate-900">
-              <Lightbulb size={15} className="text-amber-500" />
-              Lời khuyên tác vụ
-            </h2>
-            <div className="mt-3 rounded-lg bg-emerald-50/80 p-3">
-              <p className="text-[10px] font-semibold leading-relaxed text-emerald-900">
-                Đơn xin phép và cảnh báo quỹ đang cần được ưu tiên.
-              </p>
-              <p className="mt-1.5 text-[9px] leading-relaxed text-slate-600">
-                Có 8 đơn chờ duyệt và một thông báo chênh lệch cần đối soát. Xử
-                lý trước khi kết thúc ca để tránh quá hạn.
-              </p>
-              <button className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#0C66E4]">
-                Xem hướng dẫn xử lý <ChevronRight size={11} />
-              </button>
-            </div>
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50/50 p-3">
-              <ShieldAlert
-                size={14}
-                className="mt-0.5 shrink-0 text-amber-700"
-              />
-              <p className="text-[9px] leading-relaxed text-slate-600">
-                <b className="text-slate-800">Nhắc lịch:</b> Bảng lương tháng 10
-                cần được đối soát trước 17:00 ngày 30/10.
-              </p>
-            </div>
-          </section>
-          <section className="rounded-xl border border-slate-200/80 bg-[#F3F6FC] p-3">
-            <p className="text-[9px] leading-relaxed text-slate-500">
-              <Bell size={11} className="mr-1 inline text-[#0C66E4]" />
-              Thông báo được đồng bộ tự động từ lịch làm việc, hệ thống đơn từ
-              và đối soát doanh thu.
-            </p>
-          </section>
-        </aside>
-      </div>
+        </div>
+      </section>
 
       {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[3px]">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="notification-settings"
-            className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
-          >
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/40"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cài đặt kênh nhận thông báo"
+        >
+          <div className="flex h-full w-full max-w-sm flex-col bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h2
-                id="notification-settings"
-                className="flex items-center gap-2 text-sm font-bold text-slate-900"
-              >
-                <Settings size={16} className="text-[#0C66E4]" />
-                Cài đặt thông báo
-              </h2>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Kênh nhận thông báo</h2>
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  Áp dụng cho tài khoản đang đăng nhập.
+                </p>
+              </div>
               <button
+                type="button"
                 onClick={() => setSettingsOpen(false)}
-                aria-label="Đóng cài đặt"
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+                aria-label="Đóng"
               >
                 <X size={16} />
               </button>
             </div>
-            <div className="space-y-4 p-5">
-              {(
-                [
-                  {
-                    key: "schedule",
-                    title: "Lịch làm việc",
-                    detail: "Nhận thông báo khi có thay đổi lịch",
-                    icon: CalendarDays,
-                  },
-                  {
-                    key: "salary",
-                    title: "Lương & thưởng",
-                    detail: "Nhận thông báo phiếu lương hàng tháng",
-                    icon: CircleDollarSign,
-                  },
-                  {
-                    key: "requests",
-                    title: "Đơn từ xét duyệt",
-                    detail: "Nhận thông báo khi có đơn cần xử lý",
-                    icon: FileText,
-                  },
-                ] as const
-              ).map((item) => {
-                const Icon = item.icon;
-                const enabled = settings[item.key];
-                return (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between gap-4"
+
+            <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+              {settingsLoading ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
+                  <Loader2 size={16} className="animate-spin" />
+                  Đang tải cài đặt...
+                </div>
+              ) : (
+                channels.map((item) => (
+                  <label
+                    key={item.channel}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
-                        <Icon size={16} />
+                    <span>
+                      <span className="block text-xs font-semibold text-slate-800">
+                        {CHANNEL_LABELS[item.channel] ?? item.channel}
                       </span>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800">
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 text-[9px] text-slate-500">
-                          {item.detail}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      role="switch"
-                      aria-checked={enabled}
-                      aria-label={item.title}
-                      onClick={() => toggleSetting(item.key)}
-                      className={`h-6 w-11 shrink-0 rounded-full p-1 transition-colors ${enabled ? "bg-[#0C66E4]" : "bg-slate-300"}`}
-                    >
-                      <span
-                        className={`block h-4 w-4 rounded-full bg-white transition-transform ${enabled ? "translate-x-5" : "translate-x-0"}`}
-                      />
-                    </button>
-                  </div>
-                );
-              })}
+                      <span className="mt-0.5 block text-[10px] text-slate-500">
+                        Bật/tắt sẽ tạo hoặc cập nhật cấu hình cho kênh này.
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={(event) =>
+                        void toggleChannel(item.channel, event.target.checked)
+                      }
+                      className="h-4 w-4 accent-[#0C66E4]"
+                    />
+                  </label>
+                ))
+              )}
+
+              {settingsError && (
+                <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+                  <AlertTriangle size={14} />
+                  {settingsError}
+                </div>
+              )}
+
+              {settingsSaved && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700">
+                  <Check size={14} />
+                  Đã lưu cài đặt kênh nhận.
+                </div>
+              )}
             </div>
-            <div className="flex justify-end border-t border-slate-100 bg-[#F8F9FF] px-5 py-3">
-              <button
-                onClick={() => setSettingsOpen(false)}
-                className="rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-              >
-                Lưu cài đặt
-              </button>
+
+            <div className="border-t border-slate-100 px-5 py-3 text-[10px] text-slate-500">
+              Thay đổi được lưu ngay khi gạt công tắc. Các kênh này quyết định nơi hệ thống gửi
+              thông báo cho bạn.
             </div>
           </div>
         </div>
