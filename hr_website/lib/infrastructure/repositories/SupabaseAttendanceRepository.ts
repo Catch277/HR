@@ -1,6 +1,8 @@
 import type {
   Attendance,
   AttendanceBranch,
+  AttendanceComplaintStatus,
+  AttendanceCorrectionInput,
   AttendanceFilters,
   AttendanceStatus,
 } from "@/lib/domain/entities/Attendance";
@@ -15,6 +17,10 @@ import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient"
 /**
  * `employee`, `branch` and `shift` are embedded resources resolved from the foreign keys, so the
  * Bảng công screen can show a name, the shift hours and the geofence radius in one request.
+ *
+ * `employee` names its foreign key explicitly: this table points at `users` twice
+ * (`employee_id` and `verified_by`), and PostgREST refuses to guess which one an unqualified
+ * `users` embed means (PGRST201).
  */
 const ATTENDANCE_COLUMNS = [
   "id",
@@ -35,11 +41,17 @@ const ATTENDANCE_COLUMNS = [
   "note",
   "complaint",
   "complaint_at",
+  "complaint_status",
+  "complaint_resolved_by",
+  "complaint_resolved_at",
   "verified_by",
   "verified_at",
+  "corrected_by",
+  "corrected_at",
+  "correction_reason",
   "created_at",
   "updated_at",
-  "employee:users (id, full_name)",
+  "employee:users!attendance_employee_id_fkey (id, full_name)",
   "branch:branches (id, name, latitude, longitude, attendance_radius)",
   "shift:shifts (id, name, branch_id, start_time, end_time)",
 ].join(", ");
@@ -78,8 +90,14 @@ type AttendanceRow = {
   note: string | null;
   complaint: string | null;
   complaint_at: string | null;
+  complaint_status: string | null;
+  complaint_resolved_by: string | null;
+  complaint_resolved_at: string | null;
   verified_by: string | null;
   verified_at: string | null;
+  corrected_by: string | null;
+  corrected_at: string | null;
+  correction_reason: string | null;
   created_at: string;
   updated_at: string;
   employee: EmbeddedRow<{ id: string; full_name: string }>;
@@ -134,8 +152,14 @@ function toAttendance(row: AttendanceRow): Attendance {
     note: row.note,
     complaint: row.complaint,
     complaint_at: row.complaint_at,
+    complaint_status: row.complaint_status as AttendanceComplaintStatus | null,
+    complaint_resolved_by: row.complaint_resolved_by,
+    complaint_resolved_at: row.complaint_resolved_at,
     verified_by: row.verified_by,
     verified_at: row.verified_at,
+    corrected_by: row.corrected_by,
+    corrected_at: row.corrected_at,
+    correction_reason: row.correction_reason,
     created_at: row.created_at,
     updated_at: row.updated_at,
     employee: employee
@@ -206,7 +230,15 @@ export class SupabaseAttendanceRepository implements IAttendanceRepository {
     const now = new Date().toISOString();
     const { data, error } = await supabase
       .from("attendance")
-      .update({ complaint, complaint_at: now, updated_at: now })
+      .update({
+        complaint,
+        complaint_at: now,
+        // A new or re-sent complaint starts open again, whatever happened before.
+        complaint_status: "OPEN",
+        complaint_resolved_by: null,
+        complaint_resolved_at: null,
+        updated_at: now,
+      })
       .eq("id", id)
       .select(ATTENDANCE_COLUMNS)
       .maybeSingle();
@@ -238,6 +270,68 @@ export class SupabaseAttendanceRepository implements IAttendanceRepository {
       throw new Error(
         `Unable to verify the attendance record: ${error.message}`,
       );
+    }
+
+    if (!data) {
+      throw new AttendanceNotFoundError();
+    }
+
+    return toAttendance(data as unknown as AttendanceRow);
+  }
+
+  async resolveComplaint(id: string, resolverId: string): Promise<Attendance> {
+    const supabase = await createSupabaseServerClient();
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("attendance")
+      .update({
+        complaint_status: "RESOLVED",
+        complaint_resolved_by: resolverId,
+        complaint_resolved_at: now,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .select(ATTENDANCE_COLUMNS)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Unable to resolve the complaint: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new AttendanceNotFoundError();
+    }
+
+    return toAttendance(data as unknown as AttendanceRow);
+  }
+
+  async correct(
+    id: string,
+    input: AttendanceCorrectionInput & {
+      correctorId: string;
+      correctedAt: string;
+    },
+  ): Promise<Attendance> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("attendance")
+      .update({
+        check_in_at: input.checkInAt,
+        check_out_at: input.checkOutAt,
+        status: input.status,
+        note: input.note,
+        // Who fixed it, when, and why — the fields payroll audits.
+        corrected_by: input.correctorId,
+        corrected_at: input.correctedAt,
+        correction_reason: input.correctionReason,
+        updated_at: input.correctedAt,
+      })
+      .eq("id", id)
+      .select(ATTENDANCE_COLUMNS)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Unable to correct the attendance record: ${error.message}`);
     }
 
     if (!data) {

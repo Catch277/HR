@@ -46,14 +46,36 @@ export interface Attendance {
   note: string | null;
   complaint: string | null;
   complaint_at: string | null;
+  /** `OPEN` from the moment a complaint is stored until a manager resolves it. */
+  complaint_status: AttendanceComplaintStatus | null;
+  complaint_resolved_by: string | null;
+  complaint_resolved_at: string | null;
   verified_by: string | null;
   verified_at: string | null;
+  /** Set when a manager corrected the record (SCRUM-23), with the reason they gave. */
+  corrected_by: string | null;
+  corrected_at: string | null;
+  correction_reason: string | null;
   created_at: string;
   updated_at: string;
   /** Hydrated from the foreign keys; null when RLS hides the related row. */
   employee: { id: string; full_name: string } | null;
   branch: AttendanceBranch | null;
   shift: Shift | null;
+}
+
+export const ATTENDANCE_COMPLAINT_STATUSES = ["OPEN", "RESOLVED"] as const;
+
+export type AttendanceComplaintStatus =
+  (typeof ATTENDANCE_COMPLAINT_STATUSES)[number];
+
+/** What a manager may fix on a record, and the reason the correction must carry. */
+export interface AttendanceCorrectionInput {
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  status: AttendanceStatus;
+  note: string | null;
+  correctionReason: string;
 }
 
 export interface AttendanceFilters {

@@ -7,6 +7,7 @@ import {
   Loader2,
   MapPin,
   MessageSquareWarning,
+  Pencil,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -33,6 +34,61 @@ type ComplaintTarget = {
   label: string;
   existing: string | null;
 };
+
+type CorrectionTarget = {
+  id: string;
+  label: string;
+};
+
+type CorrectionForm = {
+  checkIn: string;
+  checkOut: string;
+  status: AttendanceStatus;
+  note: string;
+  reason: string;
+};
+
+/**
+ * `datetime-local` has no timezone, so the value is read and written as a wall clock in the
+ * business timezone: writing parses it as UTC+7 and reading formats it in Asia/Bangkok.
+ */
+const bangkokInputFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Bangkok",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function toBangkokInputValue(iso: string | null): string {
+  if (!iso) {
+    return "";
+  }
+
+  const parsed = new Date(iso);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const parts = bangkokInputFormatter.formatToParts(parsed);
+  const part = (type: string) =>
+    parts.find((entry) => entry.type === type)?.value ?? "00";
+
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+}
+
+function fromBangkokInputValue(value: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(`${value}:00+07:00`);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
 
 const STATUS_LABELS: Record<AttendanceStatus, string> = {
   ON_TIME: "Đúng giờ",
@@ -132,11 +188,11 @@ const GEOFENCE_BADGES: Record<GeofenceVerdict, string> = {
   UNKNOWN: "bg-slate-100 text-slate-600",
 };
 
-/** Records a manager still has to look at: outside the geofence, complained about, or unverified. */
+/** Records a manager still has to look at: outside the geofence, an open complaint, or unverified. */
 function needsAttention(record: Attendance): boolean {
   return (
     geofenceVerdict(record) === "OUTSIDE" ||
-    Boolean(record.complaint) ||
+    record.complaint_status === "OPEN" ||
     !record.verified_at
   );
 }
@@ -167,6 +223,16 @@ export default function AttendancePage() {
   const [complaintTarget, setComplaintTarget] = useState<ComplaintTarget | null>(null);
   const [complaintText, setComplaintText] = useState("");
   const [savingComplaint, setSavingComplaint] = useState(false);
+  const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget | null>(null);
+  const [correctionForm, setCorrectionForm] = useState<CorrectionForm>({
+    checkIn: "",
+    checkOut: "",
+    status: "ON_TIME",
+    note: "",
+    reason: "",
+  });
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [resolvingId, setResolvingId] = useState("");
   const [verifyingId, setVerifyingId] = useState("");
 
   // Bumping the token re-runs the effect below; keeping the fetch inside the effect (instead of
@@ -277,7 +343,9 @@ export default function AttendancePage() {
   const outsideCount = records.filter(
     (record) => geofenceVerdict(record) === "OUTSIDE",
   ).length;
-  const complaintCount = records.filter((record) => Boolean(record.complaint)).length;
+  const openComplaintCount = records.filter(
+    (record) => record.complaint_status === "OPEN",
+  ).length;
   const attentionCount = records.filter(needsAttention).length;
   const totalHours =
     Math.round(
@@ -385,6 +453,96 @@ export default function AttendancePage() {
     }
   }
 
+  function openCorrection(record: Attendance) {
+    setCorrectionTarget({
+      id: record.id,
+      label:
+        record.employee?.full_name ?? `Nhân viên #${record.employee_id.slice(0, 4)}`,
+    });
+    setCorrectionForm({
+      checkIn: toBangkokInputValue(record.check_in_at),
+      checkOut: toBangkokInputValue(record.check_out_at),
+      status: record.status,
+      note: record.note ?? "",
+      reason: "",
+    });
+    setPageError("");
+  }
+
+  function closeCorrection() {
+    setCorrectionTarget(null);
+  }
+
+  async function submitCorrection() {
+    if (!correctionTarget) {
+      return;
+    }
+
+    if (!correctionForm.reason.trim()) {
+      setPageError("Vui lòng nhập lý do sửa giờ trước khi lưu.");
+      return;
+    }
+
+    setSavingCorrection(true);
+    setPageError("");
+
+    try {
+      const response = await fetch(`/api/attendance/${correctionTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          check_in_at: fromBangkokInputValue(correctionForm.checkIn),
+          check_out_at: fromBangkokInputValue(correctionForm.checkOut),
+          status: correctionForm.status,
+          note: correctionForm.note.trim() || null,
+          correction_reason: correctionForm.reason.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setPageError(actionErrorMessage(response.status, data));
+        return;
+      }
+
+      closeCorrection();
+      refresh();
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setSavingCorrection(false);
+    }
+  }
+
+  async function resolveComplaint(record: Attendance) {
+    setResolvingId(record.id);
+    setPageError("");
+
+    try {
+      const response = await fetch(`/api/attendance/complaints/${record.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "RESOLVED" }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setPageError(actionErrorMessage(response.status, data));
+        return;
+      }
+
+      refresh();
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setResolvingId("");
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
@@ -476,7 +634,7 @@ export default function AttendancePage() {
             {attentionCount}
           </p>
           <p className="mt-1 text-[10px] text-rose-600">
-            {outsideCount} ngoài vùng · {complaintCount} khiếu nại
+            {outsideCount} ngoài vùng · {openComplaintCount} khiếu nại chưa xử lý
           </p>
         </article>
       </div>
@@ -689,8 +847,26 @@ export default function AttendancePage() {
                           )}
                         </div>
                         {record.complaint && (
-                          <p className="mt-1 max-w-56 text-[11px] text-rose-600">
-                            {record.complaint}
+                          <div className="mt-1 max-w-56">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                record.complaint_status === "OPEN"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-emerald-50 text-emerald-700"
+                              }`}
+                            >
+                              {record.complaint_status === "OPEN"
+                                ? "Khiếu nại chưa xử lý"
+                                : "Đã xử lý khiếu nại"}
+                            </span>
+                            <p className="mt-1 text-[11px] text-rose-600">
+                              {record.complaint}
+                            </p>
+                          </div>
+                        )}
+                        {record.corrected_at && (
+                          <p className="mt-1 max-w-56 text-[11px] text-slate-500">
+                            Đã sửa giờ: {record.correction_reason}
                           </p>
                         )}
                       </td>
@@ -711,6 +887,29 @@ export default function AttendancePage() {
                               Xác nhận
                             </button>
                           )}
+                          {record.complaint_status === "OPEN" && (
+                            <button
+                              type="button"
+                              onClick={() => void resolveComplaint(record)}
+                              disabled={resolvingId === record.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              {resolvingId === record.id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Check size={13} />
+                              )}
+                              Xử lý khiếu nại
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openCorrection(record)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                          >
+                            <Pencil size={13} />
+                            Sửa giờ
+                          </button>
                           <button
                             type="button"
                             onClick={() => openComplaint(record)}
@@ -728,6 +927,136 @@ export default function AttendancePage() {
           </table>
         </div>
       </section>
+
+      {correctionTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                  <Pencil size={18} />
+                </span>
+                <div>
+                  <h2 className="font-bold text-slate-900">Sửa giờ chấm công</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Bản ghi của {correctionTarget.label}. Giờ nhập theo múi giờ Việt Nam
+                    (UTC+7) và lý do sửa là bắt buộc để lưu vết.
+                  </p>
+                </div>
+              </div>
+              <button type="button" aria-label="Đóng" onClick={closeCorrection}>
+                <X size={18} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="block text-xs font-semibold text-slate-600">
+                Giờ vào
+                <input
+                  type="datetime-local"
+                  value={correctionForm.checkIn}
+                  onChange={(event) =>
+                    setCorrectionForm((value) => ({
+                      ...value,
+                      checkIn: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+                />
+              </label>
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Giờ ra
+                <input
+                  type="datetime-local"
+                  value={correctionForm.checkOut}
+                  onChange={(event) =>
+                    setCorrectionForm((value) => ({
+                      ...value,
+                      checkOut: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+                />
+              </label>
+            </div>
+
+            <label className="mt-4 block text-xs font-semibold text-slate-600">
+              Trạng thái
+              <select
+                value={correctionForm.status}
+                onChange={(event) =>
+                  setCorrectionForm((value) => ({
+                    ...value,
+                    status: event.target.value as AttendanceStatus,
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+              >
+                {ATTENDANCE_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="mt-4 block text-xs font-semibold text-slate-600">
+              Ghi chú
+              <textarea
+                value={correctionForm.note}
+                onChange={(event) =>
+                  setCorrectionForm((value) => ({
+                    ...value,
+                    note: event.target.value,
+                  }))
+                }
+                rows={2}
+                maxLength={500}
+                className="mt-1 w-full resize-none rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+
+            <label className="mt-4 block text-xs font-semibold text-slate-600">
+              Lý do sửa giờ <span className="text-rose-500">*</span>
+              <textarea
+                value={correctionForm.reason}
+                onChange={(event) =>
+                  setCorrectionForm((value) => ({
+                    ...value,
+                    reason: event.target.value,
+                  }))
+                }
+                rows={2}
+                maxLength={500}
+                placeholder="Ví dụ: máy chấm công lỗi, nhân viên có báo trước khi vào ca."
+                className="mt-1 w-full resize-none rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeCorrection}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitCorrection()}
+                disabled={savingCorrection || !correctionForm.reason.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingCorrection && (
+                  <Loader2 size={13} className="animate-spin" />
+                )}
+                {savingCorrection ? "Đang lưu..." : "Lưu sửa giờ"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {complaintTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
