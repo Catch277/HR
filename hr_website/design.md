@@ -492,6 +492,7 @@ Current `Sidebar` order (module → route → icon):
 | Label (vi) | Route | Icon |
 | --- | --- | --- |
 | Tổng quan | `/` | `LayoutDashboard` |
+| Tổ chức | `/organization` | `Landmark` |
 | Quản lý chi nhánh | `/branches` | `Building2` |
 | Cơ sở vật chất | `/facilities` | `PackageSearch` |
 | Doanh thu | `/revenue` | `CircleDollarSign` |
@@ -520,6 +521,9 @@ Screens required by the in-flight epics, following the same header/card/badge la
 | Chấm công (check-in/out + ảnh + toạ độ) | SCRUM-21/22/29 | `/attendance` ✅ built (web review side) | Bảng công | `ClipboardCheck` |
 | Sửa giờ + xử lý khiếu nại | SCRUM-23 | `/attendance` ✅ built (dialog + badge, no new route) | Bảng công | `Pencil` / `Check` |
 | Quản lý nhân sự (vai trò, nghỉ việc) | SCRUM-24 | `/staff` ✅ built | Quản lý nhân sự | `UsersRound` |
+| Tổ chức + mã tham gia + danh sách tài khoản | SCRUM-51 | `/organization` ✅ built | Tổ chức | `Landmark` |
+| Tạo hoặc gia nhập tổ chức | SCRUM-51 | `/onboarding` ✅ built (shell-less) | Bắt đầu | `Landmark` / `KeyRound` |
+| Tài khoản do chủ sở hữu tạo (mật khẩu tạm) | SCRUM-52 | `/change-password` ✅ built (shell-less) | Đổi mật khẩu | `KeyRound` |
 
 Check-in/check-out themselves are mobile-first (`hr_mobile_app`); the web counterpart is the review
 screen (ảnh xác minh + toạ độ + trạng thái hợp lệ).
@@ -601,6 +605,15 @@ Known inconsistencies to fix when the relevant screen is next touched (do not ma
    another** (facilities: condition pills + branch/category selects; schedules: status pills + branch
    select). Adopt that split on the next filter row: pills for a short closed set read at a glance, selects
    once there are more than ~5 options or the labels are long.
+9. The tenant model (SCRUM-51/53) is **not isolation until `SCRUM-53_tenant_scope.sql` is applied**: with
+   SCRUM-51 alone an organization is a join gate, while the operational tables are still readable by every
+   signed-in account. Both screens added by these tickets (`/organization`, `/onboarding`) and the
+   shell-less pattern they follow are described in §10; do not describe an organization as isolating data
+   to a user before that script has run.
+10. `/organization` offers "Tạo tài khoản cho nhân viên" only when `GET /api/organizations/accounts`
+    answers `available: true`, i.e. when the `staff-account` Edge Function is deployed (SCRUM-52). Without
+    it the screen shows a note and the invite path, which is deliberate: a button that always fails is
+    worse than a sentence explaining why.
 
 ---
 

@@ -23,6 +23,8 @@ worker.
 | `/employee-status` | Trạng thái nhân viên | Live roster: đang làm, chưa vào ca, nghỉ phép, đã tan ca, không có ca (SCRUM-22) |
 | `/attendance`      | Bảng công            | Timesheet review: giờ vào/ra, vị trí theo bán kính chi nhánh, sửa giờ, khiếu nại (SCRUM-21/22/23/29) |
 | `/staff`           | Quản lý nhân sự      | Staff administration: roles, cho nghỉ việc / kích hoạt lại (SCRUM-24)           |
+| `/organization`    | Tổ chức              | Organization home: join code, the register of accounts, tạo tài khoản có mật khẩu tạm (SCRUM-51/52) |
+| `/onboarding`      | Bắt đầu              | Create an organization or join one with its code — where an account with no organization lands (SCRUM-51) |
 | `/reports`         | Báo cáo              | Revenue reporting and analysis screen (SCRUM-44 provides the aggregation API)   |
 | `/notifications`   | Thông báo            | In-app notification feed and per-channel settings (SCRUM-48)                    |
 | `/chat`            | Trợ lý AI            | Ask about internal policies and your own contract                               |
@@ -184,6 +186,17 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `PUT /api/branches/{id}`             | session           | `branches`                    | Replaces the editable fields of one branch; `400` if `id` is not a UUID, `404` when the branch is missing or not updatable                          |
 | `GET /api/users`                     | session           | `users`                       | `?id=<uuid>` → `{ id, full_name, role }` (`404` when unknown); without `id` → the staff directory including `is_active`, `403` unless the caller is `OWNER`/`CHU` |
 | `PATCH /api/users/{id}`              | session + role    | `users`                       | Body `{ role, is_active }` → the updated staff member; `403` unless `OWNER`/`CHU`, only an `OWNER` may grant or revoke the `OWNER` role, and nobody may change their own role or deactivate themselves |
+| `POST /api/organizations`            | session           | `organizations`               | Body `{ name }` → `201`; creates the caller's organization and makes them its `OWNER` (registering grants nothing); `409` when they already belong to one |
+| `GET /api/organizations/current`     | session           | `organizations` + `users`     | `{ organization, code, member_count, pending_invite_count }`; `organization` is null while the caller has none, and `code` is null unless they are `OWNER`/`CHU` (RLS keeps it) |
+| `PATCH /api/organizations/current`   | session + role    | `organizations`               | Body `{ name?, rotate_code? }` → the updated summary; renaming needs `OWNER`/`CHU`, rotating the join code (`regenerate_organization_code`) needs `OWNER` |
+| `POST /api/organizations/join`       | session           | RPC `join_organization`       | Body `{ code }` → the summary. **Two factors**: the code must match *and* the caller's email must be on that organization's register; an outsider with the code gets `403`, ten failed attempts per hour get `429`, already being in an organization gets `409` |
+| `GET /api/organizations/invites`     | session + role    | `organization_invites`        | The register of accounts (`invite` = asked an existing account, `provisioned` = created with a temporary password); `403` unless `OWNER`/`CHU` |
+| `POST /api/organizations/invites`    | session + role    | `organization_invites`        | Body `{ email, full_name?, role? }` → `201`; `role` is capped at `CHU` (an invite never mints an `OWNER`), `409` when the address is already listed |
+| `DELETE /api/organizations/invites/{id}` | session + role | `organization_invites`        | Withdraws an unclaimed invite (`404` for another organization's row, `400` for a non-UUID id) |
+| `GET /api/organizations/accounts`    | session + role    | Edge Function probe           | `{ available }` — whether the `staff-account` Edge Function is deployed, so the screen can hide a form that would always fail |
+| `POST /api/organizations/accounts`   | session + role    | Edge Function (service role)  | Body `{ email, password, full_name?, role? }` → `201`; creates a real Supabase Auth account with the owner-chosen temporary password, adds it to the register and flags `must_change_password`; `503` when the function is not deployed, `409` when the email exists |
+| `POST /api/organizations/accounts/password` | session + role | Edge Function (service role) | Body `{ user_id, password }` → replaces a member's temporary password; the function refuses any account outside the caller's organization (`403`) |
+| `POST /api/auth/change-password`     | session           | Supabase Auth + `complete_password_change` | Body `{ password }` → the caller's own new password (no service role) and clears `must_change_password`, which is what the `/change-password` gate reads |
 | `POST /api/chat/ask`                 | session           | Gemini + vector RPCs          | Body `{ question }` → `{ answer, sources[] }`; answers only from retrieved internal documents                                                        |
 | `GET /api/swagger`                   | —                 | generated spec                | Serves `public/swagger.json`                                                                                                                         |
 
@@ -258,6 +271,8 @@ Editor (there is no migration runner or Supabase CLI here). Apply it in this ord
 | 12  | `SCRUM-22_employee_status.sql`      | `users.is_active` (whether an account still works here, because "nghỉ việc" cannot be derived) and the `get_employee_status(p_branch_id, p_work_date)` RPC: one row per person per business day, `security invoker` so the underlying RLS still filters, executable by `authenticated` only |
 | 13  | `SCRUM-23_attendance_review.sql`    | The Bảng công review columns on `public.attendance`: `corrected_by`/`corrected_at`/`correction_reason` (a CHECK keeps the reason and the timestamp together, so a correction is always auditable) and the khiếu nại lifecycle `complaint_status` (`OPEN`/`RESOLVED`, existing complaints backfilled to `OPEN`), `complaint_resolved_by`/`complaint_resolved_at` + an index on the status. No RLS change: `attendance_update_managers` already permits it |
 | 14  | `SCRUM-24_staff_admin.sql`          | Quản lý nhân sự: `users.is_active` (repeated from SCRUM-22 so this script stands alone), the read policy `users_select_authenticated` — the directory is only id, name, role, `is_active` and `created_at`, no salary or contact data — and `users_update_managers` (only `OWNER`/`CHU` may change a role or the employment state; no insert policy, because accounts are created by sign-up) |
+| 15  | `SCRUM-51_organizations.sql`        | Tổ chức: `organizations`, `organization_join_codes` (the code sits in its own table because RLS filters rows, not columns — its policy keeps it to `OWNER`/`CHU`), `organization_invites` (the register of accounts, `source` `invite`/`provisioned`), `organization_join_attempts` (audit + the 10-per-hour throttle), `users.organization_id`, `users.must_change_password`, the helper functions `current_organization_id()` / `is_organization_manager()` and the `security definer` RPCs `create_organization` / `join_organization` / `regenerate_organization_code` / `complete_password_change`. Also narrows `users_select_authenticated` and `users_update_managers` to the caller's organization, which is what stops the schedule/requests/attendance embeds from mixing tenants |
+| 16  | `SCRUM-53_tenant_scope.sql`         | `organization_id` on the operational tables (`branches`, `shifts`, `shift_assignments`, `attendance`, `requests`, `facilities`, `daily_revenue`) with `default public.current_organization_id()` so the mobile check-in keeps inserting unchanged, an index per table, every policy rewritten to add the organization predicate — the original conditions are kept verbatim, a rewrite must never end up looser — plus a backfill that assigns the pre-existing rows when exactly one organization exists, and a verification query block. Notifications are left alone: `user_id = auth.uid()` is already narrower |
 
 Tables the API touches: `users` (its `role` gates approvals — `OWNER`/`CHU`), `requests`, `shifts`
 (the template catalogue), `shift_assignments` (the schedule), `attendance`, `daily_revenue`, `branches`,
@@ -266,6 +281,29 @@ Tables the API touches: `users` (its `role` gates approvals — `OWNER`/`CHU`), 
 The AI assistant additionally depends on `match_company_documents` / `match_user_contracts` and their
 embedding tables. Those objects are not covered by the scripts in this repository, so the chat endpoint
 only works against a Supabase project where they already exist.
+
+### The `staff-account` Edge Function (SCRUM-52, optional)
+
+Creating a Supabase Auth account *for somebody else* needs the service-role key, which this app
+deliberately does not have. That single capability therefore lives in an Edge Function:
+
+- **Source (deployed by hand):** `supabase/functions/staff-account/index.ts`. There is no Supabase CLI or
+  Docker in this repository, so deploy it from the Dashboard: **Edge Functions → Create a new function →
+  name it `staff-account` → paste the file → Deploy**. Keep JWT verification **ON**; `SUPABASE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY` are supplied by the platform, and no secret is added to this app.
+- **How it is called:** `POST /api/organizations/accounts` forwards the *caller's* access token, so the
+  function authorizes the user (it re-reads their profile and requires `OWNER`/`CHU` of an organization)
+  rather than trusting this app. The URL is derived from `NEXT_PUBLIC_SUPABASE_URL` as
+  `…/functions/v1/staff-account`; set `STAFF_ACCOUNT_FUNCTION_URL` to override it if you rename the
+  function.
+- **Behaviour without it:** `GET /api/organizations/accounts` answers `{ "available": false }`, the
+  provisioning form on `/organization` is replaced by a note, and the invite path (`POST
+  /api/organizations/invites`) still onboards people — the endpoints never pretend to work.
+- **What it does:** creates the account with `email_confirm: true` and the owner-typed temporary
+  password, sets `must_change_password`, and writes the register row (`source = 'provisioned'`). The
+  password is never stored or logged. It also serves `action: "reset_password"` for a member of the
+  caller's own organization. Guardrails: field validation, JWT verification, the organization/role
+  check, and a 20-accounts-per-organization-per-hour limit.
 
 Rules for new database work:
 
@@ -389,6 +427,12 @@ An honest snapshot of what is real and what is still a prototype:
 | `PGRST201` "more than one relationship was found for 'attendance' and 'users'" | Two foreign keys point at `users` (`employee_id` + `verified_by`, or `employee_id` + `created_by`), so PostgREST will not guess. The repositories name the foreign key explicitly (`employee:users!attendance_employee_id_fkey`) — keep that hint when editing a select |
 | `PGRST202` "Could not find the function public.get_employee_status"   | The RPC is missing: run `supabase/sql/SCRUM-22_employee_status.sql`                                                                                                            |
 | Sửa giờ / đổi vai trò answers `400` with "You cannot change your own…" | By design: an `OWNER` cannot demote or deactivate themselves, so the last owner cannot lock everyone out of the admin app                                                       |
+| "Unable to retrieve the organization." (or 500 on `/organization`)   | `SCRUM-51_organizations.sql` is not applied — the `organizations` table and the join RPCs are missing                                                                          |
+| Every screen redirects to `/onboarding`                              | Not a bug: the signed-in account belongs to no organization yet. Create one there (you become its `OWNER`) or join with a code. `proxy.ts` owns that redirect              |
+| `403` on join although the code is right                             | The account's email is not on that organization's register — this is the anti-outsider rule. The owner adds it on `/organization`; the message says so                      |
+| `429` when joining                                                   | Ten failed join attempts by that account in the last hour (`organization_join_attempts` is both the trail and the throttle)                                                   |
+| "The staff account service is not available." (`503`)                | The `staff-account` Edge Function is not deployed yet — deploy it (see "The `staff-account` Edge Function") or onboard people with an invite instead                          |
+| Attendance / revenue / schedules look empty after `SCRUM-53`         | The rows still have `organization_id = null`: the script's backfill only runs when exactly one organization exists. Assign them with the `update` statements printed at the end of that script, then re-run its second verification query |
 
 ## Related documents
 

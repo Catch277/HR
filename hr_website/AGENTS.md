@@ -173,7 +173,10 @@ that must not live in SQL).
   New scripts are idempotent (`create table if not exists`, `drop policy if exists` before `create policy`),
   enable RLS and grant the narrowest policy. Never edit a script that has already been applied — add a new one.
 - Tables in use: `users` (with `role` — `OWNER`/`CHU` can review requests and manage branches — and
-  `is_active`, false meaning the account left the company), `requests`,
+  `is_active`, false meaning the account left the company), `organizations` /
+  `organization_join_codes` / `organization_invites` / `organization_join_attempts` (SCRUM-51: the
+  tenant, its join code, the register of accounts that may spend that code, and the join audit trail),
+  `requests`,
   `shifts` (**the shift template catalogue** — name + hours, written by SCRUM-30 and read by quick search),
   `shift_assignments` (the schedule: one employee × one template × one `work_date`), `attendance` (the
   timesheet: one employee × one `work_date`, GPS point + distance, photo, complaint, verification),
@@ -197,13 +200,17 @@ that must not live in SQL).
 - Consumers: `/api-docs` renders Swagger UI, `GET /api/swagger` returns the JSON spec.
 - Revenue flows are tracked as `SCRUM-39` (open), `SCRUM-40` (close), `SCRUM-44` (report),
   `SCRUM-48` (notifications), `SCRUM-49` (quick search), the timesheet as `SCRUM-21` with review
-  (corrections + khiếu nại) as `SCRUM-23`, and staff administration as `SCRUM-24` — cite the ticket in
-  the code docs you touch.
+  (corrections + khiếu nại) as `SCRUM-23`, staff administration as `SCRUM-24`, and the tenant model
+  as `SCRUM-51` (organizations, join code, register, join RPCs), `SCRUM-52` (owner-created accounts
+  through the `staff-account` Edge Function) and `SCRUM-53` (organization scoping of the operational
+  tables) — cite the ticket in the code docs you touch.
 
 ## UI & i18n conventions
 
 - New screens are `app/<segment>/page.tsx`; register them in `components/Sidebar.tsx` (lucide-react icon
-  + Vietnamese label) so navigation stays complete. `app/layout.tsx` owns the shell and the
+  + Vietnamese label) so navigation stays complete (add it to `SHELL_LESS_PATHS` in
+  `lib/publicPaths.ts` instead when it must render without the navigation, as `/onboarding` and
+  `/change-password` do). `app/layout.tsx` owns the shell and the
   Be Vietnam Pro font; only add `"use client"` when state, effects or browser APIs are used.
 - Tailwind CSS v4 (no `tailwind.config.*`; the PostCSS plugin is `@tailwindcss/postcss`). Reuse the
   existing visual language: primary `#0C66E4` with `blue-50` tints, surfaces `#F8F9FF`/`#F3F6FC`,
@@ -229,7 +236,10 @@ that must not live in SQL).
 - Change a route's response shape, status codes or error wording that existing UI code consumes.
 - Run `git push --force`, `git reset --hard`, `git checkout -- .`, or otherwise rewrite history or
   discard uncommitted work.
-- Weaken or bypass RLS, or swap the request-scoped Supabase client for an admin/service-role client.
+- Weaken or bypass RLS, or swap the request-scoped Supabase client for an admin/service-role client. The
+  single privileged path is the `staff-account` Edge Function: it authorizes the *caller's* JWT, requires
+  `OWNER`/`CHU` of an organization, and its service-role key stays in Supabase's own secrets — never in
+  this app, its env files or a client bundle.
 - Remove or downgrade lint/type checks (or add ignores) to make something pass.
 - Touch the sibling apps `hr_mobile_app/` and `landing_website/` from here.
 
@@ -294,7 +304,26 @@ that must not live in SQL).
   tables all point at `users` more than once, and PostgREST answers `PGRST201` ("more than one relationship
   was found") instead of guessing — a 500 on an otherwise healthy screen. Add a third FK to a table and every
   unqualified embed into it breaks at runtime, not at compile time.
-- The staff surface (`SCRUM-24`) is the only place roles and `is_active` change: `users_select_authenticated`
+- The tenant model (SCRUM-51/53) lives in RLS and `security definer` RPCs, not in application logic:
+  `join_organization` demands **both** the right code *and* a register row for the caller's email (so a
+  leaked or guessed code is useless to an outsider), `create_organization` is what makes somebody an
+  `OWNER` — registering grants nothing — and every operational table carries `organization_id` whose
+  column default is `current_organization_id()` (that is why the mobile check-in needed no change).
+  `proxy.ts` owns the two onboarding redirects (`/onboarding` while the account has no organization,
+  `/change-password` while `must_change_password` is set) and skips them when the `users` row or those
+  columns are missing, so a half-applied database cannot lock everyone out.
+- Rewriting a policy must only ever *add* to the original condition. Re-creating one from memory and
+  dropping a clause (`status = 'PENDING'`, `employee_id = auth.uid()`, the role check) is a silent
+  security regression that no typecheck or lint will catch — read the previous definition first, and
+  leave the verification query at the end of `SCRUM-53_tenant_scope.sql` in place.
+- `supabase/functions/**` is Deno, not Node: `tsconfig.json` excludes it from `npx tsc --noEmit` and it
+  imports `npm:` specifiers. The app reaches it only through `EdgeFunctionStaffProvisioningService`,
+  forwarding the caller's access token; the service-role key exists solely in that function's Supabase
+  secrets and must never appear in this repository or in a client.
+- `lib/publicPaths.ts` has two lists: `PUBLIC_PATHS` (no session needed — `proxy.ts` redirects a
+  signed-in visitor away) and `SHELL_LESS_PATHS` (`/onboarding`, `/change-password`: a session is
+  required, the navigation is hidden because every link would bounce back, the header stays so the
+  account can sign out).
   lets any signed-in account read the directory (id, name, role, `is_active`, `created_at` — nothing else),
   `users_update_managers` limits writes to `OWNER`/`CHU`, and `UpdateStaffUseCase` adds the rules the database
   cannot express (only an `OWNER` touches the `OWNER` role; nobody edits their own row). Accounts are still

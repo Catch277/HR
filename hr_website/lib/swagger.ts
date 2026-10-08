@@ -39,6 +39,92 @@ export function getApiDocs() {
               created_at: { type: "string", format: "date-time" },
             },
           },
+          Organization: {
+            type: "object",
+            required: ["id", "name", "created_by", "created_at", "updated_at"],
+            properties: {
+              id: { type: "string", format: "uuid" },
+              name: { type: "string" },
+              created_by: { type: "string", format: "uuid", nullable: true },
+              created_at: { type: "string", format: "date-time" },
+              updated_at: { type: "string", format: "date-time" },
+            },
+          },
+          OrganizationSummary: {
+            type: "object",
+            required: ["organization", "code", "member_count", "pending_invite_count"],
+            properties: {
+              organization: {
+                allOf: [{ $ref: "#/components/schemas/Organization" }],
+                nullable: true,
+                description:
+                  "null khi tài khoản chưa tạo và chưa tham gia tổ chức nào (màn hình /onboarding).",
+              },
+              code: {
+                type: "string",
+                nullable: true,
+                description:
+                  "Mã tham gia của tổ chức; null khi người gọi không phải OWNER/CHU (RLS giữ mã lại).",
+              },
+              member_count: {
+                type: "integer",
+                description: "Số tài khoản trong tổ chức (chỉ đếm được người cùng tổ chức).",
+              },
+              pending_invite_count: {
+                type: "integer",
+                description: "Số lời mời chưa được sử dụng (claimed_by còn null).",
+              },
+            },
+          },
+          OrganizationInvite: {
+            type: "object",
+            required: [
+              "id",
+              "organization_id",
+              "email",
+              "full_name",
+              "role",
+              "source",
+              "invited_by",
+              "claimed_by",
+              "claimed_at",
+              "created_at",
+            ],
+            properties: {
+              id: { type: "string", format: "uuid" },
+              organization_id: { type: "string", format: "uuid" },
+              email: { type: "string", format: "email" },
+              full_name: { type: "string", nullable: true },
+              role: {
+                type: "string",
+                enum: ["EMPLOYEE", "CHU"],
+                description: "Vai trò khi gia nhập; lời mời không bao giờ tạo ra OWNER.",
+              },
+              source: {
+                type: "string",
+                enum: ["invite", "provisioned"],
+                description:
+                  "provisioned = chủ sở hữu tạo tài khoản với mật khẩu tạm (SCRUM-52), invite = mời tài khoản đã có.",
+              },
+              invited_by: { type: "string", format: "uuid", nullable: true },
+              claimed_by: { type: "string", format: "uuid", nullable: true },
+              claimed_at: { type: "string", format: "date-time", nullable: true },
+              created_at: { type: "string", format: "date-time" },
+            },
+          },
+          StaffProvisionResult: {
+            type: "object",
+            required: ["user_id", "email", "must_change_password"],
+            properties: {
+              user_id: { type: "string", format: "uuid" },
+              email: { type: "string", format: "email" },
+              must_change_password: {
+                type: "boolean",
+                description:
+                  "Luôn true: tài khoản phải tự đổi mật khẩu tạm ở /change-password trước khi dùng hệ thống.",
+              },
+            },
+          },
           AuthSession: {
             type: "object",
             required: ["userId", "email"],
