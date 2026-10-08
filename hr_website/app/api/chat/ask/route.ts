@@ -4,10 +4,10 @@
  *   post:
  *     summary: Hỏi đáp chính sách, quy định và hợp đồng bằng AI
  *     description: |
- *       Nhận câu hỏi từ người dùng, tạo embedding bằng Gemini `text-embedding-004`,
- *       tìm kiếm các đoạn tài liệu liên quan qua Supabase vector search
- *       (`match_company_documents` và `match_user_contracts`), sau đó gọi
- *       `gemini-1.5-flash` để sinh câu trả lời có trích dẫn nguồn.
+ *       Nhận câu hỏi từ người dùng, tạo embedding bằng Gemini `gemini-embedding-001`
+ *       (768 chiều, khớp cột vector trong database), tìm kiếm các đoạn tài liệu liên quan
+ *       qua Supabase vector search (`match_company_documents` và `match_user_contracts`),
+ *       sau đó gọi `gemini-3.5-flash` để sinh câu trả lời có trích dẫn nguồn.
  *
  *       **Quy tắc trả lời của AI:**
  *       - Chỉ trả lời dựa trên nội dung tài liệu nội bộ tìm được.

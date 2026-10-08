@@ -5,6 +5,20 @@ import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient"
 /** Số lượng chunk tối đa lấy từ mỗi nguồn tìm kiếm. */
 const MATCH_COUNT = 5;
 
+/**
+ * Ngưỡng tương đồng tối thiểu truyền vào RPC.
+ *
+ * Hai hàm `match_*` trong database **không có giá trị mặc định** cho tham số này
+ * (`match_company_documents(match_count, match_threshold, query_embedding)`), nên thiếu nó không
+ * phải là "không có kết quả" mà là lỗi PGRST202 "Could not find the function …" — đó là lý do
+ * `/api/chat/ask` trả 500 dù RPC tồn tại.
+ *
+ * Đặt 0 nghĩa là không lọc: quy tắc số 3 trong prompt của `GeminiLLMService` vẫn buộc mô hình trả
+ * lời đúng câu "không có thông tin" khi ngữ cảnh không chứa câu trả lời. Tăng hằng số này (ví dụ
+ * 0.6) nếu muốn cắt bớt các đoạn tài liệu ít liên quan trước khi gọi mô hình.
+ */
+const MATCH_THRESHOLD = 0;
+
 /** Shape kết quả trả về từ RPC Supabase match_company_documents. */
 interface RpcCompanyDocumentRow {
   content: string;
@@ -36,6 +50,7 @@ export class SupabaseVectorSearchRepository
     const { data, error } = await supabase.rpc("match_company_documents", {
       query_embedding: embedding,
       match_count: matchCount,
+      match_threshold: MATCH_THRESHOLD,
     });
 
     if (error) {
@@ -64,6 +79,7 @@ export class SupabaseVectorSearchRepository
       query_embedding: embedding,
       query_user_id: userId,
       match_count: matchCount,
+      match_threshold: MATCH_THRESHOLD,
     });
 
     if (error) {

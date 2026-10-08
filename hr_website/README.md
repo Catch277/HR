@@ -41,7 +41,7 @@ Quick search (SCRUM-49) is reachable from the header search box and from `GET /a
 | Language          | TypeScript 5 with `strict: true`, no `any`                                             |
 | Backend / data    | Supabase — PostgreSQL, Auth, Row Level Security, SQL RPC functions                     |
 | Supabase client   | `@supabase/ssr` request-scoped server client (App Router cookies)                      |
-| AI assistant      | `@google/generative-ai` — `text-embedding-004` embeddings + `gemini-1.5-flash` answers |
+| AI assistant      | `@google/generative-ai` — `gemini-embedding-001` embeddings (768 dims) + `gemini-3.5-flash` answers |
 | Styling           | Tailwind CSS v4 (`@tailwindcss/postcss`), `lucide-react`, Be Vietnam Pro font          |
 | API documentation | `next-swagger-doc` from JSDoc `@swagger` blocks + `swagger-ui-react`                   |
 | Tooling           | npm, ESLint 9 (`eslint-config-next`), `tsx` for generator scripts                      |
@@ -334,11 +334,18 @@ Rules for new database work:
 
 `POST /api/chat/ask` is a retrieval-augmented flow:
 
-1. `GeminiLLMService.createEmbedding` embeds the question with `text-embedding-004`.
+1. `GeminiLLMService.createEmbedding` embeds the question with `gemini-embedding-001`, pinning
+   `outputDimensionality: 768` so the vector matches the existing `vector(768)` columns.
 2. `SupabaseVectorSearchRepository` runs `match_company_documents` and `match_user_contracts` in parallel
-   (five chunks each), keeping personal contracts scoped to the calling user.
-3. The merged context goes to `gemini-1.5-flash`, which must answer **only** from that context, cite the
+   (five chunks each), keeping personal contracts scoped to the calling user. Both RPCs take
+   `match_threshold` with **no default**, so the argument is mandatory — omitting it fails with
+   `PGRST202` rather than returning an empty list.
+3. The merged context goes to `gemini-3.5-flash`, which must answer **only** from that context, cite the
    source document, and return a fixed "không có thông tin" sentence when nothing matches.
+
+The models are pinned, not aliased: `text-embedding-004` and `gemini-1.5-flash` now answer `404`
+("no longer available") and the `gemini-flash-latest` alias measured 2/4 calls failing with `503
+high demand`. Verify a candidate with `GET /v1beta/models?key=…` before switching.
 
 Model names, the prompt and that fallback sentence live in
 `lib/infrastructure/GeminiLLMService.ts`; changing them is a product decision (it costs money and changes
@@ -483,7 +490,7 @@ This README documents the `hr_website` app only. The repository root (one level 
   đầu/cuối ca, duyệt đơn từ, xếp ca, bảng công, trạng thái nhân viên, thông báo, tìm kiếm nhanh và trợ lý
   AI hỏi đáp chính sách/hợp đồng.
 - **Công nghệ:** Next.js 16 (App Router) + TypeScript + Tailwind v4; Supabase (PostgreSQL, Auth, RLS, RPC)
-  là toàn bộ backend; Gemini `text-embedding-004` + `gemini-1.5-flash` cho trợ lý AI. Không có server API
+  là toàn bộ backend; Gemini `gemini-embedding-001` (768 chiều) + `gemini-3.5-flash` cho trợ lý AI. Không có server API
   riêng và không dùng ORM.
 - **Kiến trúc:** Clean Architecture — `app/api/**/route.ts` chỉ nhận request, xác thực rồi gọi đúng một use
   case; nghiệp vụ nằm trong `lib/usecases`; `lib/infrastructure` (Supabase, Gemini) triển khai các interface

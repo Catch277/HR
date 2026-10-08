@@ -1,16 +1,51 @@
 import {
   GoogleGenerativeAI,
+  type EmbedContentRequest,
   type GenerateContentResult,
 } from "@google/generative-ai";
 
 import type { DocumentChunk } from "@/lib/domain/entities/ChatMessage";
 import type { ILLMService } from "@/lib/domain/repositories/ILLMService";
 
-/** Model dùng để tạo embedding. */
-const EMBEDDING_MODEL = "text-embedding-004";
+/**
+ * Model dùng để tạo embedding.
+ *
+ * `text-embedding-004` (model cũ) đã bị Google khai tử: gọi vào sẽ trả 404
+ * "is not found for API version v1beta, or is not supported for embedContent". `gemini-embedding-001`
+ * là model embedding còn hiệu lực và trả về đúng `EMBEDDING_DIMENSIONS` chiều khi được yêu cầu.
+ */
+const EMBEDDING_MODEL = "gemini-embedding-001";
 
-/** Model dùng để sinh câu trả lời. */
-const CHAT_MODEL = "gemini-1.5-flash";
+/**
+ * Số chiều vector embedding — **phải khớp kiểu cột `vector(n)` trong database**.
+ * `text-embedding-004` cũng trả về 768 chiều, nên 768 là giá trị mà các bảng
+ * `company_documents` / `user_contracts` đang được tạo theo. `gemini-embedding-001` mặc định trả
+ * 3072 chiều, vì vậy tham số `outputDimensionality` bên dưới là bắt buộc, không phải tuỳ chọn.
+ */
+const EMBEDDING_DIMENSIONS = 768;
+
+/**
+ * Model dùng để sinh câu trả lời.
+ *
+ * `gemini-1.5-flash` (model cũ) đã bị khai tử (404 khi gọi) và `gemini-2.5-flash` bị chặn với
+ * project mới ("no longer available to new users"). `gemini-3.5-flash` đang mở cho khoá API này và
+ * trả lời đúng vai trợ lý có trích dẫn nguồn (đo 4/4 lần gọi thành công).
+ *
+ * Không dùng bí danh `gemini-flash-latest`: nó trỏ vào model mới nhất đang quá tải, đo được 2/4 lần
+ * trả 503 "experiencing high demand". `gemini-3.5-flash-lite` là lựa chọn rẻ hơn nếu cần (cũng 4/4).
+ */
+const CHAT_MODEL = "gemini-3.5-flash";
+
+/**
+ * Yêu cầu embedding kèm `outputDimensionality`.
+ *
+ * SDK `@google/generative-ai` 0.24.1 chưa khai báo trường này trong `EmbedContentRequest`, nhưng
+ * vẫn gửi nguyên object lên API (`formatEmbedContentInput` trả lại object không đổi và body là
+ * `JSON.stringify(params)`), nên chỉ cần mở rộng kiểu — không cần cast.
+ */
+type EmbedContentRequestWithDimensions = EmbedContentRequest & {
+  outputDimensionality?: number;
+};
 
 /**
  * Câu trả lời mặc định khi ngữ cảnh không chứa thông tin liên quan.
@@ -21,8 +56,8 @@ const NO_INFO_RESPONSE =
 
 /**
  * Triển khai ILLMService sử dụng Google Gemini API.
- * - Embedding: model `text-embedding-004`
- * - Chat completion: model `gemini-1.5-flash`
+ * - Embedding: `gemini-embedding-001`, cố định `EMBEDDING_DIMENSIONS` chiều
+ * - Chat completion: `gemini-flash-latest` (bí danh của model flash mới nhất)
  */
 export class GeminiLLMService implements ILLMService {
   private readonly client: GoogleGenerativeAI;
@@ -41,7 +76,12 @@ export class GeminiLLMService implements ILLMService {
   async createEmbedding(text: string): Promise<number[]> {
     const model = this.client.getGenerativeModel({ model: EMBEDDING_MODEL });
 
-    const result = await model.embedContent(text);
+    const request: EmbedContentRequestWithDimensions = {
+      content: { role: "user", parts: [{ text }] },
+      outputDimensionality: EMBEDDING_DIMENSIONS,
+    };
+
+    const result = await model.embedContent(request);
 
     return result.embedding.values;
   }
