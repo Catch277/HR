@@ -4159,7 +4159,7 @@
     "/api/chat/ask": {
       "post": {
         "summary": "Hỏi đáp chính sách, quy định và hợp đồng bằng AI",
-        "description": "Nhận câu hỏi từ người dùng, tạo embedding bằng Gemini `text-embedding-004`,\ntìm kiếm các đoạn tài liệu liên quan qua Supabase vector search\n(`match_company_documents` và `match_user_contracts`), sau đó gọi\n`gemini-1.5-flash` để sinh câu trả lời có trích dẫn nguồn.\n\n**Quy tắc trả lời của AI:**\n- Chỉ trả lời dựa trên nội dung tài liệu nội bộ tìm được.\n- Trích dẫn rõ nguồn tài liệu trong câu trả lời.\n- Nếu không có thông tin, trả lời: *\"Tôi không có thông tin về vấn đề này. Vui lòng liên hệ quản lý để được hỗ trợ.\"*\n",
+        "description": "Nhận câu hỏi từ người dùng, tạo embedding bằng Gemini `gemini-embedding-001`\n(768 chiều, khớp cột vector trong database), tìm kiếm các đoạn tài liệu liên quan\nqua Supabase vector search (`match_company_documents` và `match_user_contracts`),\nsau đó gọi `gemini-3.5-flash` để sinh câu trả lời có trích dẫn nguồn.\n\n**Quy tắc trả lời của AI:**\n- Chỉ trả lời dựa trên nội dung tài liệu nội bộ tìm được.\n- Trích dẫn rõ nguồn tài liệu trong câu trả lời.\n- Nếu không có thông tin, trả lời: *\"Tôi không có thông tin về vấn đề này. Vui lòng liên hệ quản lý để được hỗ trợ.\"*\n",
         "tags": [
           "Chat AI"
         ],
