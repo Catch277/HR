@@ -499,6 +499,7 @@ Current `Sidebar` order (module → route → icon):
 | Lịch làm việc | `/schedules` | `CalendarRange` |
 | Trạng thái nhân viên | `/employee-status` | `UserCheck` |
 | Bảng công | `/attendance` | `ClipboardCheck` |
+| Quản lý nhân sự | `/staff` | `UsersRound` |
 | Báo cáo | `/reports` | `PieChart` |
 | Thông báo | `/notifications` | `Bell` |
 | Trợ lý AI | `/chat` | `Bot` |
@@ -517,6 +518,8 @@ Screens required by the in-flight epics, following the same header/card/badge la
 | Cơ sở vật chất theo chi nhánh | SCRUM-45/46 | `/facilities` ✅ built | Cơ sở vật chất | `PackageSearch` |
 | Lịch làm việc (phân ca theo tuần) | SCRUM-30 | `/schedules` ✅ built | Lịch làm việc | `CalendarRange` |
 | Chấm công (check-in/out + ảnh + toạ độ) | SCRUM-21/22/29 | `/attendance` ✅ built (web review side) | Bảng công | `ClipboardCheck` |
+| Sửa giờ + xử lý khiếu nại | SCRUM-23 | `/attendance` ✅ built (dialog + badge, no new route) | Bảng công | `Pencil` / `Check` |
+| Quản lý nhân sự (vai trò, nghỉ việc) | SCRUM-24 | `/staff` ✅ built | Quản lý nhân sự | `UsersRound` |
 
 Check-in/check-out themselves are mobile-first (`hr_mobile_app`); the web counterpart is the review
 screen (ảnh xác minh + toạ độ + trạng thái hợp lệ).
@@ -584,15 +587,16 @@ Known inconsistencies to fix when the relevant screen is next touched (do not ma
    `lib/publicPaths.ts` (`isPublicPath(usePathname())`). Moving the nine authenticated screens into an
    `app/(dashboard)/` route group with its own layout is the cleaner long-term shape — a mechanical move,
    worth doing once no feature branch is in flight.
-6. `/branches` has no branch-manager picker although `branches.manager_id` and the API field exist: the
-   picker needs a staff-list endpoint, and exposing staff rows is a PII decision. The screen shows the
-   assignment state as a badge (`Đã gán` / `Chưa gán`) in the meantime.
+6. `/branches` has no branch-manager picker although `branches.manager_id` and the API field exist. The
+   missing piece — a staff-list endpoint — now exists (`GET /api/users` without `id`, SCRUM-24, `OWNER`/`CHU`
+   only, with the escalation rules in `UpdateStaffUseCase`), so the picker is a normal next step for that
+   screen. It shows the assignment state as a badge (`Đã gán` / `Chưa gán`) in the meantime.
 7. `/schedules` (SCRUM-30) replaced the old mock `/shifts` screen: the nav label changed from "Xếp ca" to
    "Lịch làm việc" and the route moved to `/schedules`, so `app/shifts/page.tsx` no longer exists. The
    schedule modal picks a person with `GET /api/search?type=users` (search-as-you-type) instead of a
-   `<select>` of every employee — the same PII call as the branch-manager picker above. The unused
-   `MockShift` / `getMockShifts` / `createMockShift` helpers in `lib/mock/adminStore.ts` can be deleted
-   when that file is next touched.
+   `<select>` of every employee — the same PII call as the branch-manager picker above, now answered by the
+   SCRUM-24 directory endpoint. The `MockShift` helpers mentioned here are gone: SCRUM-22 deleted
+   `lib/mock/adminStore.ts`.
 8. `/facilities` and `/schedules` are the first screens with **pills for one dimension + `<select>`s for
    another** (facilities: condition pills + branch/category selects; schedules: status pills + branch
    select). Adopt that split on the next filter row: pills for a short closed set read at a glance, selects

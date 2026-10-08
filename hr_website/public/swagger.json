@@ -27,6 +27,42 @@
           }
         }
       },
+      "StaffMember": {
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "role",
+          "is_active",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "CHU",
+              "EMPLOYEE"
+            ],
+            "description": "Vai trò hệ thống; OWNER/CHU mới quản lý được nhân sự."
+          },
+          "is_active": {
+            "type": "boolean",
+            "description": "false nghĩa là tài khoản đã nghỉ việc."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "AuthSession": {
         "type": "object",
         "required": [
@@ -566,8 +602,14 @@
           "note",
           "complaint",
           "complaint_at",
+          "complaint_status",
+          "complaint_resolved_by",
+          "complaint_resolved_at",
           "verified_by",
           "verified_at",
+          "corrected_by",
+          "corrected_at",
+          "correction_reason",
           "created_at",
           "updated_at",
           "employee",
@@ -663,6 +705,25 @@
             "format": "date-time",
             "nullable": true
           },
+          "complaint_status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "RESOLVED"
+            ],
+            "nullable": true,
+            "description": "null khi chưa có khiếu nại; OPEN từ lúc ghi nhận tới khi quản lý xử lý xong."
+          },
+          "complaint_resolved_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "complaint_resolved_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
           "verified_by": {
             "type": "string",
             "format": "uuid",
@@ -673,6 +734,22 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "corrected_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Quản lý đã sửa giờ của bản ghi (SCRUM-23)."
+          },
+          "corrected_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "correction_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Lý do sửa giờ, bắt buộc khi có corrected_at."
           },
           "created_at": {
             "type": "string",
@@ -1321,7 +1398,8 @@
   "paths": {
     "/api/users": {
       "get": {
-        "summary": "Get a user by ID",
+        "summary": "Look up a user, or list the staff directory",
+        "description": "With `?id=<uuid>` returns that profile (id, full name, role). Without `id` returns the\nwhole staff directory (SCRUM-24) including `is_active`, which only an OWNER/CHU may read.\n",
         "tags": [
           "Users"
         ],
@@ -1329,33 +1407,194 @@
           {
             "in": "query",
             "name": "id",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "The user's UUID."
+            "description": "The user's UUID. Omit it to list the staff directory."
           }
         ],
         "responses": {
           "200": {
-            "description": "The requested user.",
+            "description": "The requested user, or the staff directory.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StaffMember"
+                      }
+                    }
+                  ]
                 }
               }
             }
           },
           "400": {
-            "description": "The id query parameter is missing."
+            "description": "The id query parameter is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no user profile, or is not allowed to read the directory.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "No user exists with the supplied ID."
+            "description": "No user exists with the supplied ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected server error occurred."
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "patch": {
+        "summary": "Change a staff member's role or employment state",
+        "description": "SCRUM-24: gives an account a different role (`OWNER`, `CHU`, `EMPLOYEE`) or marks it as\nleft/returned (`is_active`). Restricted to OWNER/CHU, only an OWNER may grant or revoke\nthe OWNER role, and nobody may change their own role or deactivate themselves.\n",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role",
+                  "is_active"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "OWNER",
+                      "CHU",
+                      "EMPLOYEE"
+                    ]
+                  },
+                  "is_active": {
+                    "type": "boolean",
+                    "description": "false means the account has left the company."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated staff member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID, the body is invalid, or the change would lock the caller out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no profile, is not a manager, or tried to touch the OWNER role.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The account does not exist or is not updatable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3371,6 +3610,133 @@
         }
       }
     },
+    "/api/attendance/{id}": {
+      "patch": {
+        "summary": "Correct an attendance record",
+        "description": "Fixes the times, status and note of one record (SCRUM-23) and stamps `corrected_by`,\n`corrected_at` and `correction_reason`, so a manager can repair a wrong timesheet that\npayroll would otherwise trust. Restricted to OWNER/CHU: the use case checks the role and\nthe `attendance_update_managers` RLS policy repeats it in the database. The reason is\nmandatory.\n",
+        "tags": [
+          "Attendance"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "correction_reason"
+                ],
+                "properties": {
+                  "check_in_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "check_out_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ON_TIME",
+                      "LATE",
+                      "EARLY_LEAVE",
+                      "ABSENT",
+                      "INCOMPLETE"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "nullable": true
+                  },
+                  "correction_reason": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "example": "Máy chấm công lỗi, nhân viên có báo trước khi vào ca."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The corrected record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attendance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID, the body is invalid, the reason is missing, or giờ ra precedes giờ vào.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no user profile, or the role may not correct records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The record does not exist or is not correctable by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/attendance/{id}/verify": {
       "patch": {
         "summary": "Verify an attendance record",
@@ -3518,6 +3884,110 @@
           },
           "403": {
             "description": "The caller is neither the employee on the record nor an OWNER/CHU manager.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The attendance record does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/attendance/complaints/{id}": {
+      "patch": {
+        "summary": "Resolve a complaint on an attendance record",
+        "description": "Closes an open khiếu nại (SCRUM-23): sets `complaint_status` to `RESOLVED` and stamps\n`complaint_resolved_by` / `complaint_resolved_at`. Only OWNER/CHU may resolve one, while\nthe employee on the record may raise it (POST /api/attendance/complaints).\n",
+        "tags": [
+          "Attendance"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "description": "The attendance record id that carries the complaint.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "RESOLVED"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The attendance record with the complaint resolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attendance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID, the body is invalid, or the record has no complaint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no user profile, or the role may not resolve complaints.",
             "content": {
               "application/json": {
                 "schema": {

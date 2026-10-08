@@ -107,8 +107,9 @@ inventing one. Every route is Supabase-backed now — the in-memory mock store w
 screen (employee status) moved to the `get_employee_status` RPC — so a new resource follows this recipe
 end to end and adds its own `supabase/sql/SCRUM-*.sql` script. The reference implementations are
 `app/api/branches/route.ts` (shared `_lib` parser, write path), `app/api/schedules/route.ts` (embedded
-selects, `409` on a business conflict) and `app/api/attendance/route.ts` (many filters, RPC-backed sibling
-in `app/api/employee-status/route.ts`).
+selects, `409` on a business conflict), `app/api/attendance/route.ts` (many filters, RPC-backed sibling
+in `app/api/employee-status/route.ts`) and `app/api/users/[id]/route.ts` (role-gated update with the rules
+that must not live in SQL).
 
 1. Export `async function GET|POST|PUT|PATCH|DELETE(request: Request | NextRequest)` — default export
    is not allowed here. Respond only with `NextResponse.json(body, { status })`.
@@ -195,7 +196,9 @@ in `app/api/employee-status/route.ts`).
   when zero paths are found, wired to `predev`/`prebuild`). Never hand-edit it — regenerate it.
 - Consumers: `/api-docs` renders Swagger UI, `GET /api/swagger` returns the JSON spec.
 - Revenue flows are tracked as `SCRUM-39` (open), `SCRUM-40` (close), `SCRUM-44` (report),
-  `SCRUM-48` (notifications), `SCRUM-49` (quick search) — cite the ticket in the code docs you touch.
+  `SCRUM-48` (notifications), `SCRUM-49` (quick search), the timesheet as `SCRUM-21` with review
+  (corrections + khiếu nại) as `SCRUM-23`, and staff administration as `SCRUM-24` — cite the ticket in
+  the code docs you touch.
 
 ## UI & i18n conventions
 
@@ -275,6 +278,9 @@ in `app/api/employee-status/route.ts`).
   is why `SCRUM-50_user_registration.sql` only fills the gaps (`create table if not exists` + `add column if
   not exists`) and why nothing but that trigger creates the profile row for a new auth account. Add a public
   screen (like `/register`) by extending `lib/publicPaths.ts`; `proxy.ts`, `Header` and `Sidebar` all read it.
+  SCRUM-50 also created the narrow `users_select_own` read policy; `SCRUM-24_staff_admin.sql` replaced it with
+  `users_select_authenticated` (the staff directory) and added `users_update_managers`, so that is where the
+  read and write rules live now.
 - `public.shifts` is a shift **template** ("Ca sáng", 08:00–17:00) and `public.shift_assignments` is the
   schedule — do not merge them. Overlap detection lives in the use case
   (`lib/usecases/shiftOverlap.ts`) because only it can compare the hours of two templates; the database only
@@ -282,6 +288,17 @@ in `app/api/employee-status/route.ts`).
 - Embedded PostgREST selects (`employee:users (id, full_name)`) defeat the client's type inference: `data`
   comes back as `GenericStringError`, so those casts go through `unknown` and the row type is normalised in
   the repository. A to-one embedding can also arrive as an array, so normalise with a `firstOf` helper.
+- An embed must **name its foreign key** whenever the target table is reachable twice:
+  `employee:users!attendance_employee_id_fkey (id, full_name)`. `attendance` (employee + verifier +
+  corrector), `shift_assignments` (employee + creator), `requests` (requester + approver) and the records
+  tables all point at `users` more than once, and PostgREST answers `PGRST201` ("more than one relationship
+  was found") instead of guessing — a 500 on an otherwise healthy screen. Add a third FK to a table and every
+  unqualified embed into it breaks at runtime, not at compile time.
+- The staff surface (`SCRUM-24`) is the only place roles and `is_active` change: `users_select_authenticated`
+  lets any signed-in account read the directory (id, name, role, `is_active`, `created_at` — nothing else),
+  `users_update_managers` limits writes to `OWNER`/`CHU`, and `UpdateStaffUseCase` adds the rules the database
+  cannot express (only an `OWNER` touches the `OWNER` role; nobody edits their own row). Accounts are still
+  created by signing up — a service-role admin API is deliberately not used.
 - Attendance is split by device: the mobile app inserts the check-in (GPS point, photo) and the web app
   only reviews it. `attendance_guard_self_update` (SCRUM-21) therefore blocks an employee from editing
   their own check-in facts even though RLS lets them complete the record — do not "fix" that by widening

@@ -21,7 +21,8 @@ worker.
 | `/requests`        | Đơn từ               | Review leave / shift-swap / adjustment requests, approve or reject (SCRUM-41)   |
 | `/schedules`       | Lịch làm việc        | Weekly shift schedule: assign an employee to a shift template per day (SCRUM-30) |
 | `/employee-status` | Trạng thái nhân viên | Live roster: đang làm, chưa vào ca, nghỉ phép, đã tan ca, không có ca (SCRUM-22) |
-| `/attendance`      | Bảng công            | Timesheet review: giờ vào/ra, vị trí theo bán kính chi nhánh, khiếu nại (SCRUM-21/22/29) |
+| `/attendance`      | Bảng công            | Timesheet review: giờ vào/ra, vị trí theo bán kính chi nhánh, sửa giờ, khiếu nại (SCRUM-21/22/23/29) |
+| `/staff`           | Quản lý nhân sự      | Staff administration: roles, cho nghỉ việc / kích hoạt lại (SCRUM-24)           |
 | `/reports`         | Báo cáo              | Revenue reporting and analysis screen (SCRUM-44 provides the aggregation API)   |
 | `/notifications`   | Thông báo            | In-app notification feed and per-channel settings (SCRUM-48)                    |
 | `/chat`            | Trợ lý AI            | Ask about internal policies and your own contract                               |
@@ -170,6 +171,8 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `GET /api/attendance`                | session           | `attendance`                  | Timesheet with the employee, the shift hours and the branch geofence embedded; filters `branch_id`, `employee_id`, `status`, `start_date`, `end_date` |
 | `POST /api/attendance/complaints`    | session           | `attendance`                  | Body `{ attendance_id, complaint }` → `201`; the employee on the record or an `OWNER`/`CHU` manager may raise it, anyone else gets `403`              |
 | `PATCH /api/attendance/{id}/verify`  | session + role    | `attendance`                  | Stamps `verified_by`/`verified_at` on one record (the web review action); `403` unless the caller is `OWNER`/`CHU`                                     |
+| `PATCH /api/attendance/{id}`         | session + role    | `attendance`                  | Sửa giờ: replaces giờ vào/ra, `status` and note, and stamps `corrected_by`/`corrected_at` with the mandatory `correction_reason`; `400` when giờ ra precedes giờ vào, `403` unless the caller is `OWNER`/`CHU` |
+| `PATCH /api/attendance/complaints/{id}` | session + role | `attendance`                  | Body `{ status: "RESOLVED" }` → closes an open khiếu nại and stamps `complaint_resolved_by`/`complaint_resolved_at`; `400` when the record has no complaint, `403` unless the caller is `OWNER`/`CHU` |
 | `GET /api/employee-status`           | session           | RPC `get_employee_status`     | One row per person for one business day (Asia/Bangkok), derived from the schedule + timesheet; filters `branch_id`, `work_date`                       |
 | `GET /api/notifications`             | session           | `notifications`               | Paginated: `page` (≥1), `page_size` (≤100, default 20) → `{ data, total, page, page_size }`                                                          |
 | `PATCH /api/notifications/{id}/read` | session           | `notifications`               | Marks one notification read; `400` if `id` is not a UUID, `404` if it does not belong to you                                                         |
@@ -179,7 +182,8 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `GET /api/branches`                  | session           | `branches`                    | Branch list sorted by name, including the GPS geofence (`latitude`, `longitude`, `attendance_radius`)                                                 |
 | `POST /api/branches`                 | session           | `branches`                    | Body `{ name, address?, manager_id?, latitude?, longitude?, attendance_radius? }` → `201`; `400` when the coordinates or radius are invalid; writes need an `OWNER`/`CHU` role (RLS) |
 | `PUT /api/branches/{id}`             | session           | `branches`                    | Replaces the editable fields of one branch; `400` if `id` is not a UUID, `404` when the branch is missing or not updatable                          |
-| `GET /api/users`                     | —                 | `users`                       | `?id=<uuid>` → `{ id, full_name, role }`; `404` when unknown                                                                                         |
+| `GET /api/users`                     | session           | `users`                       | `?id=<uuid>` → `{ id, full_name, role }` (`404` when unknown); without `id` → the staff directory including `is_active`, `403` unless the caller is `OWNER`/`CHU` |
+| `PATCH /api/users/{id}`              | session + role    | `users`                       | Body `{ role, is_active }` → the updated staff member; `403` unless `OWNER`/`CHU`, only an `OWNER` may grant or revoke the `OWNER` role, and nobody may change their own role or deactivate themselves |
 | `POST /api/chat/ask`                 | session           | Gemini + vector RPCs          | Body `{ question }` → `{ answer, sources[] }`; answers only from retrieved internal documents                                                        |
 | `GET /api/swagger`                   | —                 | generated spec                | Serves `public/swagger.json`                                                                                                                         |
 
@@ -252,6 +256,8 @@ Editor (there is no migration runner or Supabase CLI here). Apply it in this ord
 | 10  | `SCRUM-41_request_review.sql`       | Fills the gaps in the hand-created `public.requests`, adds the `requests_user_id_fkey` foreign key the requester-name join needs (`not valid`, so legacy rows are not re-checked), the `status` check, four indexes and RLS: read for authenticated, insert only your own `PENDING` request, approve/reject for `OWNER`/`CHU` |
 | 11  | `SCRUM-21_attendance.sql`           | `public.attendance` (new): giờ vào/ra, GPS điểm chấm công + khoảng cách tới tâm chi nhánh (database tự tính lại từ toạ độ), ảnh xác minh, `status`, khiếu nại và xác minh của quản lý. Constraints (status, distance ≥ 0, ra ≥ vào), 4 indexes, RLS (read for authenticated, insert/update own, update for `OWNER`/`CHU`) plus two triggers: `attendance_guard_self_update` locks the check-in facts for non-managers and `attendance_compute_distance` keeps the stored distance consistent with the stored point |
 | 12  | `SCRUM-22_employee_status.sql`      | `users.is_active` (whether an account still works here, because "nghỉ việc" cannot be derived) and the `get_employee_status(p_branch_id, p_work_date)` RPC: one row per person per business day, `security invoker` so the underlying RLS still filters, executable by `authenticated` only |
+| 13  | `SCRUM-23_attendance_review.sql`    | The Bảng công review columns on `public.attendance`: `corrected_by`/`corrected_at`/`correction_reason` (a CHECK keeps the reason and the timestamp together, so a correction is always auditable) and the khiếu nại lifecycle `complaint_status` (`OPEN`/`RESOLVED`, existing complaints backfilled to `OPEN`), `complaint_resolved_by`/`complaint_resolved_at` + an index on the status. No RLS change: `attendance_update_managers` already permits it |
+| 14  | `SCRUM-24_staff_admin.sql`          | Quản lý nhân sự: `users.is_active` (repeated from SCRUM-22 so this script stands alone), the read policy `users_select_authenticated` — the directory is only id, name, role, `is_active` and `created_at`, no salary or contact data — and `users_update_managers` (only `OWNER`/`CHU` may change a role or the employment state; no insert policy, because accounts are created by sign-up) |
 
 Tables the API touches: `users` (its `role` gates approvals — `OWNER`/`CHU`), `requests`, `shifts`
 (the template catalogue), `shift_assignments` (the schedule), `attendance`, `daily_revenue`, `branches`,
@@ -368,10 +374,10 @@ An honest snapshot of what is real and what is still a prototype:
 | A query returns an empty list or `404` although rows clearly exist    | RLS is filtering by session (`auth.uid()`) — review the policies in `supabase/sql/*.sql`                                       |
 | `409` when declaring opening revenue                                  | A declaration already exists for that branch and business day (Asia/Bangkok); the unique index catches concurrent requests too |
 | `npm run build` fails while fetching fonts                            | Be Vietnam Pro comes from `next/font/google` and needs outbound network access                                                 |
-| Edits on Bảng công / Xếp ca disappear after a reload                  | Expected: those screens use the in-memory mock store                                                                           |
+| Edits on Bảng công / Xếp ca disappear after a reload                  | They should not: both screens write through the API, so a lost change means the request failed — read the rose banner and the server log                                                         |
 | `/schedules` shows the shift picker empty                             | `public.shifts` has no templates — run `supabase/sql/SCRUM-30_schedule.sql`, which seeds `Ca sáng` / `Ca chiều` / `Ca tối` / `Nghỉ` |
 | Scheduling answers `409`, or `/schedules` shows no employee name      | `409` means the employee already has an overlapping shift that day (by design). A blank name means the `users` SELECT policy hides the profile from the embedded join |
-| Every row of `/api/schedules` has `employee: null`                    | RLS on `public.users` does not let the caller read that profile; SCRUM-49's trigram index on `users.full_name` implies a directory read policy should exist |
+| Every row of `/api/schedules` has `employee: null`                    | The `users` SELECT policy hides that profile from the embedded join — run `supabase/sql/SCRUM-24_staff_admin.sql`, which creates `users_select_authenticated`                                                  |
 | Duyệt đơn answers `403`                                               | The account has no `public.users` row, or its `role` is neither `OWNER` nor `CHU` — run `SCRUM-50` and promote the account |
 | `/requests` lists nothing although rows exist                         | `requests_select_authenticated` (SCRUM-41) is missing, so RLS hides every row from the session                                                                |
 | Bảng công is empty                                                    | `public.attendance` does not exist yet — run `supabase/sql/SCRUM-21_attendance.sql`; the rows themselves are inserted by the mobile check-in                             |
@@ -379,6 +385,10 @@ An honest snapshot of what is real and what is still a prototype:
 | `403` on Xác nhận / khiếu nại                                         | The account has no `public.users` row, or its role is neither `OWNER` nor `CHU`                                                                               |
 | `/employee-status` lists only your own account                        | `get_employee_status` is `security invoker`, so the `users` SELECT policy decides: a policy that only exposes the caller's row shows a one-row roster                  |
 | `/employee-status` lists everyone as "Không có ca hôm nay"            | Nothing is scheduled (run `SCRUM-30_schedule.sql`, then add assignments) and/or nobody has checked in — the roster is derived from those two tables                             |
+| "Unable to retrieve attendance." (or requests / schedule / employee status) | That screen's `GET` answered `500`; the banner is deliberately generic, so the real cause is in the server log (`Failed to …`). The usual reasons: the feature's SQL script is not applied yet — `SCRUM-41` for requests, `SCRUM-22` for employee status — or the session has no `public.users` row |
+| `PGRST201` "more than one relationship was found for 'attendance' and 'users'" | Two foreign keys point at `users` (`employee_id` + `verified_by`, or `employee_id` + `created_by`), so PostgREST will not guess. The repositories name the foreign key explicitly (`employee:users!attendance_employee_id_fkey`) — keep that hint when editing a select |
+| `PGRST202` "Could not find the function public.get_employee_status"   | The RPC is missing: run `supabase/sql/SCRUM-22_employee_status.sql`                                                                                                            |
+| Sửa giờ / đổi vai trò answers `400` with "You cannot change your own…" | By design: an `OWNER` cannot demote or deactivate themselves, so the last owner cannot lock everyone out of the admin app                                                       |
 
 ## Related documents
 
@@ -409,8 +419,9 @@ This README documents the `hr_website` app only. The repository root (one level 
 - **Tài liệu API:** mọi route phải có khối JSDoc `@swagger`; xem `/api-docs` hoặc `GET /api/swagger`.
   `public/swagger.json` là file sinh tự động, không sửa tay.
 - **Trạng thái:** toàn bộ màn hình đã dùng Supabase thật — doanh thu, chi nhánh, cơ sở vật chất, lịch làm
-  việc, đơn từ, bảng công (chấm công + vị trí theo bán kính chi nhánh + khiếu nại + xác minh của quản lý),
-  trạng thái nhân viên (RPC `get_employee_status`), thông báo, tìm kiếm và chat AI; không còn dữ liệu mẫu
+  việc, đơn từ, bảng công (chấm công + vị trí theo bán kính chi nhánh + khiếu nại + xác minh và sửa giờ của
+  quản lý), trạng thái nhân viên (RPC `get_employee_status`), quản lý nhân sự (vai trò, cho nghỉ việc),
+  thông báo, tìm kiếm và chat AI; không còn dữ liệu mẫu
   (`lib/mock/adminStore.ts` đã bị xoá), check-in/out do app mobile ghi và web chỉ duyệt. Đã có màn hình đăng
   nhập `/login` và đăng ký `/register` (route `/api/auth/*` → use case → `SupabaseAuthService`) với
   `proxy.ts` chuyển hướng khi chưa có phiên; cần chạy `SCRUM-50_user_registration.sql` để tài khoản đăng ký

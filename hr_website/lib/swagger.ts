@@ -21,6 +21,24 @@ export function getApiDocs() {
               role: { type: "string" },
             },
           },
+          StaffMember: {
+            type: "object",
+            required: ["id", "full_name", "role", "is_active", "created_at"],
+            properties: {
+              id: { type: "string", format: "uuid" },
+              full_name: { type: "string" },
+              role: {
+                type: "string",
+                enum: ["OWNER", "CHU", "EMPLOYEE"],
+                description: "Vai trò hệ thống; OWNER/CHU mới quản lý được nhân sự.",
+              },
+              is_active: {
+                type: "boolean",
+                description: "false nghĩa là tài khoản đã nghỉ việc.",
+              },
+              created_at: { type: "string", format: "date-time" },
+            },
+          },
           AuthSession: {
             type: "object",
             required: ["userId", "email"],
@@ -366,8 +384,14 @@ export function getApiDocs() {
               "note",
               "complaint",
               "complaint_at",
+              "complaint_status",
+              "complaint_resolved_by",
+              "complaint_resolved_at",
               "verified_by",
               "verified_at",
+              "corrected_by",
+              "corrected_at",
+              "correction_reason",
               "created_at",
               "updated_at",
               "employee",
@@ -422,6 +446,23 @@ export function getApiDocs() {
                 description: "Khiếu nại của nhân viên (SCRUM-29).",
               },
               complaint_at: { type: "string", format: "date-time", nullable: true },
+              complaint_status: {
+                type: "string",
+                enum: ["OPEN", "RESOLVED"],
+                nullable: true,
+                description:
+                  "null khi chưa có khiếu nại; OPEN từ lúc ghi nhận tới khi quản lý xử lý xong.",
+              },
+              complaint_resolved_by: {
+                type: "string",
+                format: "uuid",
+                nullable: true,
+              },
+              complaint_resolved_at: {
+                type: "string",
+                format: "date-time",
+                nullable: true,
+              },
               verified_by: {
                 type: "string",
                 format: "uuid",
@@ -429,6 +470,18 @@ export function getApiDocs() {
                 description: "Quản lý đã xác minh bản ghi.",
               },
               verified_at: { type: "string", format: "date-time", nullable: true },
+              corrected_by: {
+                type: "string",
+                format: "uuid",
+                nullable: true,
+                description: "Quản lý đã sửa giờ của bản ghi (SCRUM-23).",
+              },
+              corrected_at: { type: "string", format: "date-time", nullable: true },
+              correction_reason: {
+                type: "string",
+                nullable: true,
+                description: "Lý do sửa giờ, bắt buộc khi có corrected_at.",
+              },
               created_at: { type: "string", format: "date-time" },
               updated_at: { type: "string", format: "date-time" },
               employee: {
