@@ -1,171 +1,67 @@
 import 'package:flutter/material.dart';
-import '../widgets/work_schedule_item_card.dart';
+import '../widgets/bottom_nav_bar.dart';
+import '../widgets/widget_work_schedule.dart';
+import 'package:flutter/gestures.dart';
 
-class WorkScheduleEmployeeScreen extends StatefulWidget {
-  const WorkScheduleEmployeeScreen({super.key});
-
+class AppScrollBehavior extends MaterialScrollBehavior {
   @override
-  State<WorkScheduleEmployeeScreen> createState() =>
-      _WorkScheduleEmployeeScreenState();
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse, // Cho phép kéo cuộn bằng chuột
+        PointerDeviceKind.trackpad, // Cho phép lướt trackpad
+      };
 }
 
-class _WorkScheduleEmployeeScreenState
-    extends State<WorkScheduleEmployeeScreen> {
- 
+class WorkScheduleScreen extends StatelessWidget {
+  const WorkScheduleScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F8),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
+      backgroundColor: const Color(0xFFF4F6FC),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // Header Thông tin cá nhân
+              const ScheduleHeaderCard(),
+              const SizedBox(height: 12),
 
-            // 1. HEADER + THÔNG TIN NHÂN VIÊN
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(10, 50, 20, 24),
-              decoration: const BoxDecoration(
-                color: Color(0xFF3860F4),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(24),
-                  bottomRight: Radius.circular(24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: const [
+                    // Banner Đăng ký ca mở
+                    OpenShiftBanner(),
+                    SizedBox(height: 12),
+
+                    // Chọn tuần
+                    WeekSelectorCard(),
+                    SizedBox(height: 12),
+
+                    // Card trạng thái chốt lịch
+                    ScheduleStatusCard(),
+                    SizedBox(height: 16),
+
+                    // Bảng Lịch tuần cuộn ngang
+                    WeeklyScheduleTable(),
+                    SizedBox(height: 16),
+
+                    // Chú thích ca làm việc
+                    ShiftLegend(),
+                    SizedBox(height: 20),
+
+                    // Nút thao tác dưới cùng
+                    ScheduleFooterButtons(),
+                    SizedBox(height: 24),
+                  ],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  //hàng chứa nút back và tiêu đề
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_outlined, 
-                        color: Colors.white,
-                        size: 22
-                      ),
-                        
-                      onPressed: () {
-                         if (Navigator.canPop(context)) {
-                          Navigator.pop(context); //quay lại màn hình trước đó
-                         }
-                        },
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Lịch làm việc',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 26,
-                        backgroundImage: AssetImage('assets/images/bg.png'),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Họ tên nhân viên',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.25),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'Chức vụ nhân viên',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // 2. DANH SÁCH CÁC BOX CHỨC NĂNG (DẠNG CỘT DỌC)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Danh mục quản lý',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Box 1: Lịch sử chấm công (Màu cam/vàng)
-                  WorkScheduleItemCard(
-                    title: 'Lịch sử chấm công',
-                    subtitle: 'Xem lại thời gian check-in, check-out hàng ngày',
-                    icon: Icons.history,
-                    iconBgColor: const Color(0xFFFF9800),
-                    onTap: () {
-                      // Chuyển sang màn hình Lịch sử chấm công
-                    },
-                  ),
-
-                  // Box 2: Đăng ký ca làm (Màu Xanh lá)
-                  WorkScheduleItemCard(
-                    title: 'Đăng ký ca làm',
-                    subtitle: 'Đăng ký các ca làm việc mong muốn trong tuần/tháng',
-                    icon: Icons.edit_calendar,
-                    iconBgColor: const Color(0xFF4CAF50),
-                    onTap: () {
-                      // Chuyển sang màn hình Đăng ký ca làm
-                    },
-                  ),
-
-                  // Box 3: Lịch phân ca (Màu Tím)
-                  WorkScheduleItemCard(
-                    title: 'Lịch phân ca',
-                    subtitle: 'Theo dõi ca làm chính thức do quản lý xếp',
-                    icon: Icons.calendar_month,
-                    iconBgColor: const Color(0xFF9C27B0),
-                    onTap: () {
-                      // Chuyển sang màn hình Lịch phân ca
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-          ],
+            ],
+          ),
         ),
       ),
-
+      
       
     );
   }
