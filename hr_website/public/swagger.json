@@ -3668,6 +3668,18 @@
               "default": 20
             },
             "description": "Number of items per page."
+          },
+          {
+            "in": "query",
+            "name": "unread",
+            "schema": {
+              "type": "string",
+              "enum": [
+                true,
+                false
+              ]
+            },
+            "description": "Set to `true` to return and count only unread notifications. The header uses\n`unread=true&page_size=1` so `total` is the exact unread count for its badge.\n"
           }
         ],
         "responses": {

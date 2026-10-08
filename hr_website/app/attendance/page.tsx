@@ -562,7 +562,7 @@ export default function AttendancePage() {
           type="button"
           onClick={refresh}
           disabled={loading}
-          className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
           Làm mới
@@ -570,12 +570,12 @@ export default function AttendancePage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Bản ghi theo bộ lọc
             </p>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <Clock3 size={16} />
             </span>
           </div>
@@ -587,7 +587,7 @@ export default function AttendancePage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Đúng giờ
@@ -604,7 +604,7 @@ export default function AttendancePage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Đi muộn
@@ -621,7 +621,7 @@ export default function AttendancePage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Cần xử lý
@@ -648,9 +648,9 @@ export default function AttendancePage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-3 xl:flex-row xl:items-center xl:justify-between">
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2 text-xs xl:w-72">
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-app px-3 py-2 text-xs xl:w-72">
             <Search size={14} className="shrink-0 text-slate-400" />
             <input
               aria-label="Tìm nhân viên trong bảng công"
@@ -666,7 +666,7 @@ export default function AttendancePage() {
               aria-label="Lọc theo chi nhánh"
               value={branchFilter}
               onChange={(event) => setBranchFilter(event.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#0C66E4]"
+              className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs outline-none focus:border-primary"
             >
               <option value={ALL}>Tất cả chi nhánh</option>
               {branches.map((branch) => (
@@ -676,7 +676,7 @@ export default function AttendancePage() {
               ))}
             </select>
 
-            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Từ ngày
               <input
                 type="date"
@@ -687,7 +687,7 @@ export default function AttendancePage() {
               />
             </label>
 
-            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Đến ngày
               <input
                 type="date"
@@ -706,7 +706,7 @@ export default function AttendancePage() {
             onClick={() => setStatusFilter(ALL)}
             className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
               statusFilter === ALL
-                ? "bg-blue-50 text-[#0C66E4]"
+                ? "bg-blue-50 text-primary"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -733,7 +733,7 @@ export default function AttendancePage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-xs">
-            <thead className="bg-[#F3F6FC] text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-surface-muted text-[9px] font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Nhân viên</th>
                 <th className="px-4 py-3">Ngày · Ca</th>
@@ -749,7 +749,7 @@ export default function AttendancePage() {
                 <tr className="border-t border-slate-100">
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                     <span className="inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin text-[#0C66E4]" />
+                      <Loader2 size={14} className="animate-spin text-primary" />
                       Đang tải bảng công...
                     </span>
                   </td>
@@ -778,7 +778,7 @@ export default function AttendancePage() {
                     >
                       <td className="px-4 py-4">
                         <div className="flex items-start gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-[#0C66E4]">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-primary">
                             {initials(record.employee?.full_name)}
                           </span>
                           <div>
@@ -930,10 +930,10 @@ export default function AttendancePage() {
 
       {correctionTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Pencil size={18} />
                 </span>
                 <div>
@@ -1046,7 +1046,7 @@ export default function AttendancePage() {
                 type="button"
                 onClick={() => void submitCorrection()}
                 disabled={savingCorrection || !correctionForm.reason.trim()}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {savingCorrection && (
                   <Loader2 size={13} className="animate-spin" />
@@ -1060,7 +1060,7 @@ export default function AttendancePage() {
 
       {complaintTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="font-bold text-slate-900">Khiếu nại bảng công</h2>
@@ -1101,7 +1101,7 @@ export default function AttendancePage() {
                 type="button"
                 onClick={() => void submitComplaint()}
                 disabled={savingComplaint || !complaintText.trim()}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {savingComplaint && <Loader2 size={13} className="animate-spin" />}
                 {savingComplaint ? "Đang lưu..." : "Lưu khiếu nại"}

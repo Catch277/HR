@@ -79,9 +79,9 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="z-20 hidden h-dvh w-56 shrink-0 flex-col border-r border-slate-200/80 bg-white shadow-sm md:flex">
+    <aside className="z-20 hidden h-dvh w-56 shrink-0 flex-col border-r border-slate-200/80 bg-surface shadow-sm md:flex">
       <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0C66E4] text-sm font-bold text-white shadow-sm shadow-blue-200">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white shadow-sm shadow-blue-200">
           H
         </div>
         <div className="leading-tight">
@@ -105,7 +105,7 @@ export default function Sidebar() {
               href={item.href}
               className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] transition-colors ${
                 isActive
-                  ? "bg-blue-50 font-semibold text-[#0C66E4]"
+                  ? "bg-blue-50 font-semibold text-primary"
                   : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
@@ -113,7 +113,7 @@ export default function Sidebar() {
                 size={17}
                 className={
                   isActive
-                    ? "text-[#0C66E4]"
+                    ? "text-primary"
                     : "text-slate-400 transition-colors group-hover:text-slate-600"
                 }
               />
@@ -131,10 +131,10 @@ export default function Sidebar() {
       */}
       <Link
         href="/organization"
-        className="m-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-3 transition-colors hover:border-blue-200 hover:bg-[#E8EFFF]"
+        className="m-3 rounded-xl border border-blue-100 bg-surface-accent p-3 transition-colors hover:border-blue-200 hover:bg-surface-accent-strong"
       >
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-          <Landmark size={14} className="text-[#0C66E4]" />
+          <Landmark size={14} className="text-primary" />
           <span className="truncate">
             {organization?.organization?.name ?? "Chưa có tổ chức"}
           </span>

@@ -276,9 +276,9 @@ export default function ChatPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200/80 bg-surface px-4 py-3 shadow-sm sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0C66E4] text-white">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
             <Bot size={18} />
           </span>
           <div>
@@ -291,12 +291,12 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-medium text-slate-500">
-          <span className="flex items-center gap-1 rounded-full bg-[#F3F6FC] px-2.5 py-1">
-            <BookOpen size={11} className="text-[#0C66E4]" />
+          <span className="flex items-center gap-1 rounded-full bg-surface-muted px-2.5 py-1">
+            <BookOpen size={11} className="text-primary" />
             Tài liệu công ty
           </span>
-          <span className="flex items-center gap-1 rounded-full bg-[#F3F6FC] px-2.5 py-1">
-            <FileText size={11} className="text-[#0C66E4]" />
+          <span className="flex items-center gap-1 rounded-full bg-surface-muted px-2.5 py-1">
+            <FileText size={11} className="text-primary" />
             Hợp đồng của bạn
           </span>
           <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
@@ -307,12 +307,12 @@ export default function ChatPage() {
       </div>
 
       <div className="grid min-h-[calc(100dvh-190px)] grid-cols-1 gap-4 lg:grid-cols-[228px_minmax(0,1fr)]">
-        <aside className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
+        <aside className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-surface p-3 shadow-sm">
           <button
             type="button"
             onClick={startNewConversation}
             disabled={messages.length === 0 && input === ""}
-            className="flex items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PlusCircle size={15} /> Cuộc trò chuyện mới
           </button>
@@ -322,7 +322,7 @@ export default function ChatPage() {
               <h2 className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
                 Câu hỏi gợi ý
               </h2>
-              <Sparkles size={13} className="text-[#0C66E4]" />
+              <Sparkles size={13} className="text-primary" />
             </div>
             <div className="space-y-1">
               {SUGGESTED_QUESTIONS.map((question) => (
@@ -351,7 +351,7 @@ export default function ChatPage() {
                 onClick={refreshSources}
                 disabled={sourcesLoading}
                 title="Đọc lại kho tri thức"
-                className="text-slate-400 hover:text-[#0C66E4] disabled:opacity-50"
+                className="text-slate-400 hover:text-primary disabled:opacity-50"
               >
                 <RotateCw size={12} className={sourcesLoading ? "animate-spin" : ""} />
               </button>
@@ -401,17 +401,17 @@ export default function ChatPage() {
             </ul>
           </section>
 
-          <div className="mt-auto flex items-start gap-2 rounded-lg bg-[#F3F6FC] px-2.5 py-2 text-[9px] leading-relaxed text-slate-500">
+          <div className="mt-auto flex items-start gap-2 rounded-lg bg-surface-muted px-2.5 py-2 text-[9px] leading-relaxed text-slate-500">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-500" />
             Nội dung do AI sinh có thể sai hoặc thiếu — hãy kiểm tra lại với quản lý trước khi
             áp dụng.
           </div>
         </aside>
 
-        <section className="flex min-h-[620px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+        <section className="flex min-h-[620px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
           <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
                 <Sparkles size={16} />
               </span>
               <div>
@@ -434,10 +434,10 @@ export default function ChatPage() {
             </span>
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto bg-[#FBFCFF] p-3 sm:p-4">
+          <div className="flex-1 space-y-4 overflow-y-auto bg-canvas p-3 sm:p-4">
             {messages.length === 0 ? (
-              <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-white/70 px-5 py-10 text-center">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+              <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-surface/70 px-5 py-10 text-center">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Bot size={20} />
                 </span>
                 <div>
@@ -455,7 +455,7 @@ export default function ChatPage() {
                       key={question}
                       type="button"
                       onClick={() => void ask(question)}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-[#0C66E4]"
+                      className="rounded-full border border-slate-200 bg-surface px-3 py-1.5 text-[10px] text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-primary"
                     >
                       {question}
                     </button>
@@ -467,10 +467,10 @@ export default function ChatPage() {
                 if (message.role === "user") {
                   return (
                     <div key={message.id} className="flex justify-end gap-2">
-                      <p className="max-w-[80%] whitespace-pre-line rounded-xl rounded-tr-sm bg-[#0C66E4] px-3 py-2 text-xs leading-relaxed text-white">
+                      <p className="max-w-[80%] whitespace-pre-line rounded-xl rounded-tr-sm bg-primary px-3 py-2 text-xs leading-relaxed text-white">
                         {message.text}
                       </p>
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-[#0C66E4]">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-primary">
                         <UserRound size={14} />
                       </span>
                     </div>
@@ -491,7 +491,7 @@ export default function ChatPage() {
                           type="button"
                           onClick={() => void ask(message.question)}
                           disabled={isAsking}
-                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-surface px-2.5 py-1.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                         >
                           <RotateCw size={12} /> Thử lại
                         </button>
@@ -502,11 +502,11 @@ export default function ChatPage() {
 
                 return (
                   <div key={message.id} className="flex gap-2">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                       <Sparkles size={15} />
                     </span>
                     <div className="min-w-0 flex-1 space-y-2">
-                      <div className="rounded-xl rounded-tl-sm border border-slate-200/80 bg-white p-3 shadow-sm">
+                      <div className="rounded-xl rounded-tl-sm border border-slate-200/80 bg-surface p-3 shadow-sm">
                         <p className="whitespace-pre-line text-xs leading-relaxed text-slate-700">
                           {message.text}
                         </p>
@@ -519,7 +519,7 @@ export default function ChatPage() {
                           <button
                             type="button"
                             onClick={() => void copyAnswer(message)}
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[9px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-[#0C66E4]"
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[9px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-primary"
                           >
                             {copiedId === message.id ? (
                               <>
@@ -535,10 +535,10 @@ export default function ChatPage() {
                       </div>
 
                       {message.sources.length > 0 && (
-                        <details className="rounded-lg border border-slate-200/80 bg-white">
-                          <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[10px] font-semibold text-[#0C66E4] hover:underline">
+                        <details className="rounded-lg border border-slate-200/80 bg-surface">
+                          <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[10px] font-semibold text-primary hover:underline">
                             <span className="flex items-center gap-1.5">
-                              <BookOpen size={12} className="text-[#0C66E4]" />
+                              <BookOpen size={12} className="text-primary" />
                               Trích dẫn tài liệu ({message.sources.length})
                             </span>
                             <ChevronDown size={13} className="text-slate-400" />
@@ -553,7 +553,7 @@ export default function ChatPage() {
                                       {source.source || "Tài liệu nội bộ"}
                                     </span>
                                   </span>
-                                  <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold tabular-nums text-[#0C66E4]">
+                                  <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold tabular-nums text-primary">
                                     Độ liên quan {formatSimilarity(source.similarity)}
                                   </span>
                                 </div>
@@ -573,11 +573,11 @@ export default function ChatPage() {
 
             {isAsking && (
               <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Sparkles size={15} />
                 </span>
-                <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-[10px] text-slate-500">
-                  <Loader2 size={13} className="animate-spin text-[#0C66E4]" />
+                <div className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-[10px] text-slate-500">
+                  <Loader2 size={13} className="animate-spin text-primary" />
                   Đang tra cứu tài liệu nội bộ...
                 </div>
               </div>
@@ -585,10 +585,10 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-slate-100 bg-white p-3 sm:px-4">
+          <div className="border-t border-slate-100 bg-surface p-3 sm:px-4">
             <form
               onSubmit={handleSubmit}
-              className="rounded-xl border border-slate-200 bg-[#F8F9FF] p-2 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-500/10"
+              className="rounded-xl border border-slate-200 bg-app p-2 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-500/10"
             >
               <textarea
                 rows={2}
@@ -610,7 +610,7 @@ export default function ChatPage() {
                   type="submit"
                   disabled={input.trim() === "" || isAsking}
                   title="Gửi câu hỏi"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0C66E4] text-white transition-colors hover:bg-blue-700 disabled:bg-slate-300"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary-strong disabled:bg-slate-300"
                 >
                   {isAsking ? (
                     <Loader2 size={14} className="animate-spin" />

@@ -34,7 +34,7 @@ function errorMessage(status: number, serverMessage?: string): string {
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm font-normal outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
+  "w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm font-normal outline-none focus:border-primary focus:ring-2 focus:ring-blue-500/15";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -100,9 +100,9 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-[75vh] items-center justify-center">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-surface p-6 shadow-sm sm:p-8">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0C66E4] text-sm font-bold text-white shadow-sm shadow-blue-200">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white shadow-sm shadow-blue-200">
             H
           </div>
           <div className="leading-tight">
@@ -129,7 +129,7 @@ export default function RegisterPage() {
 
             <Link
               href="/login"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#0C66E4] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
             >
               Về trang đăng nhập
             </Link>
@@ -247,7 +247,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? (
                   <>
@@ -264,7 +264,7 @@ export default function RegisterPage() {
               Đã có tài khoản?{" "}
               <Link
                 href="/login"
-                className="font-semibold text-[#0C66E4] hover:underline"
+                className="font-semibold text-primary hover:underline"
               >
                 Đăng nhập
               </Link>
@@ -273,7 +273,7 @@ export default function RegisterPage() {
         )}
 
         <p className="mt-6 flex items-center gap-1.5 text-[10px] text-slate-400">
-          <ShieldCheck size={12} className="text-[#0C66E4]" />
+          <ShieldCheck size={12} className="text-primary" />
           Tài khoản được tạo và bảo vệ bằng Supabase Auth.
         </p>
       </div>

@@ -199,7 +199,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
+      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Humora HR
@@ -214,7 +214,7 @@ export default function Dashboard() {
           type="button"
           onClick={refresh}
           disabled={loading}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Tải lại
@@ -229,12 +229,12 @@ export default function Dashboard() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Nhân sự trong ngày
             </p>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <Users size={16} />
             </span>
           </div>
@@ -246,7 +246,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Doanh thu tháng
@@ -270,7 +270,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Đơn chờ duyệt
@@ -287,7 +287,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Chấm công hôm nay
@@ -306,12 +306,12 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="flex flex-col rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <section className="flex flex-col rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-900">Đơn từ gần đây</h2>
             <a
               href="/requests"
-              className="text-[11px] font-semibold text-[#0C66E4] hover:underline"
+              className="text-[11px] font-semibold text-primary hover:underline"
             >
               Xem tất cả
             </a>
@@ -325,7 +325,7 @@ export default function Dashboard() {
             <ul className="mt-3 divide-y divide-slate-100">
               {recentRequests.map((request) => (
                 <li key={request.id} className="flex items-start gap-3 py-2.5">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[10px] font-bold text-[#0C66E4]">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[10px] font-bold text-primary">
                     {(request.requester?.full_name ?? "?").slice(0, 1).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -351,7 +351,7 @@ export default function Dashboard() {
           )}
         </section>
 
-        <section className="flex flex-col rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <section className="flex flex-col rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-900">
               Doanh thu theo ngày (tháng này)
@@ -383,7 +383,7 @@ export default function Dashboard() {
                     <div
                       key={point.bucket_start}
                       title={`${point.bucket_start}: ${formatCurrency(point.total_revenue_amount)} (${point.record_count} ca)`}
-                      className="flex-1 rounded-t bg-[#0C66E4]/80 transition-colors hover:bg-[#0C66E4]"
+                      className="flex-1 rounded-t bg-primary/80 transition-colors hover:bg-primary"
                       style={{ height: `${height}%` }}
                     />
                   );

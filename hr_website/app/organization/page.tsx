@@ -135,7 +135,7 @@ function provisioningNote(
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
+  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-500/15";
 
 export default function OrganizationPage() {
   const [summary, setSummary] = useState<OrganizationSummary | null>(null);
@@ -511,7 +511,7 @@ export default function OrganizationPage() {
       )}
 
       {!summary?.organization ? (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 text-sm text-slate-600 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/80 bg-surface p-6 text-sm text-slate-600 shadow-sm">
           <p className="font-semibold text-slate-800">Bạn chưa thuộc tổ chức nào</p>
           <p className="mt-1">
             Hãy tạo tổ chức mới hoặc tham gia bằng mã tham gia. Hệ thống sẽ tự đưa bạn tới màn hình
@@ -521,12 +521,12 @@ export default function OrganizationPage() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Thành viên
                 </p>
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Users size={16} />
                 </span>
               </div>
@@ -538,7 +538,7 @@ export default function OrganizationPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Lời mời chờ
@@ -555,7 +555,7 @@ export default function OrganizationPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Vai trò của bạn
@@ -575,10 +575,10 @@ export default function OrganizationPage() {
             </div>
           </div>
 
-          <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-slate-200/80 bg-surface p-5 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Landmark size={18} />
                 </span>
                 <div>
@@ -606,7 +606,7 @@ export default function OrganizationPage() {
                     !nameDraft.trim() ||
                     nameDraft.trim() === organizationName
                   }
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy === "name" ? (
                     <Loader2 size={15} className="animate-spin" />
@@ -625,7 +625,7 @@ export default function OrganizationPage() {
 
           {canManage ? (
             <>
-            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200/80 bg-surface p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
@@ -642,7 +642,7 @@ export default function OrganizationPage() {
               </div>
 
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <p className="flex-1 rounded-lg border border-dashed border-slate-300 bg-[#F8F9FF] px-4 py-3 text-center font-mono text-2xl font-bold tracking-[0.3em] text-slate-900 sm:text-left">
+                <p className="flex-1 rounded-lg border border-dashed border-slate-300 bg-app px-4 py-3 text-center font-mono text-2xl font-bold tracking-[0.3em] text-slate-900 sm:text-left">
                   {summary.code}
                 </p>
                 <button
@@ -672,9 +672,9 @@ export default function OrganizationPage() {
               </p>
             </section>
 
-            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200/80 bg-surface p-5 shadow-sm">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <KeyRound size={18} />
                 </span>
                 <div>
@@ -755,7 +755,7 @@ export default function OrganizationPage() {
                       !accountEmail.trim() ||
                       accountPassword.length < MIN_PASSWORD_LENGTH
                     }
-                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy === "account" ? (
                       <Loader2 size={15} className="animate-spin" />
@@ -781,7 +781,7 @@ export default function OrganizationPage() {
           ) : null}
 
           {canManage ? (
-            <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-surface shadow-sm">
               <div className="border-b border-slate-100 p-5">
                 <div className="flex items-start gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
@@ -838,7 +838,7 @@ export default function OrganizationPage() {
                   type="button"
                   onClick={() => void createInvite()}
                   disabled={busy !== "" || !inviteEmail.trim()}
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy === "invite" ? (
                     <Loader2 size={15} className="animate-spin" />
@@ -916,8 +916,8 @@ export default function OrganizationPage() {
               )}
             </section>
           ) : (
-            <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-4">
-              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[#0C66E4]" />
+            <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-surface-accent p-4">
+              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-primary" />
               <div className="text-xs text-slate-600">
                 <p className="font-semibold text-slate-800">
                   Danh sách tài khoản chỉ hiển thị cho quản lý

@@ -391,7 +391,7 @@ export default function FacilitiesPage() {
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
             Làm mới
@@ -399,7 +399,7 @@ export default function FacilitiesPage() {
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
           >
             <Plus size={14} /> Thêm thiết bị
           </button>
@@ -407,12 +407,12 @@ export default function FacilitiesPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Tổng thiết bị đang quản lý
             </p>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <PackageSearch size={16} />
             </span>
           </div>
@@ -424,7 +424,7 @@ export default function FacilitiesPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Hạng mục cần xử lý
@@ -441,7 +441,7 @@ export default function FacilitiesPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Đang sửa chữa
@@ -458,7 +458,7 @@ export default function FacilitiesPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Chi nhánh có thiết bị
@@ -482,9 +482,9 @@ export default function FacilitiesPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-3 xl:flex-row xl:items-center xl:justify-between">
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2 text-xs xl:w-96">
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-app px-3 py-2 text-xs xl:w-96">
             <Search size={14} className="shrink-0 text-slate-400" />
             <input
               aria-label="Tìm thiết bị"
@@ -506,7 +506,7 @@ export default function FacilitiesPage() {
                 setBranchFilter(event.target.value);
                 setPage(1);
               }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#0C66E4]"
+              className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs outline-none focus:border-primary"
             >
               <option value={ALL}>Tất cả chi nhánh</option>
               {branches.map((branch) => (
@@ -525,7 +525,7 @@ export default function FacilitiesPage() {
                 );
                 setPage(1);
               }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#0C66E4]"
+              className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs outline-none focus:border-primary"
             >
               <option value={ALL}>Tất cả nhóm thiết bị</option>
               {FACILITY_CATEGORIES.map((category) => (
@@ -546,7 +546,7 @@ export default function FacilitiesPage() {
             }}
             className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
               conditionFilter === ALL
-                ? "bg-blue-50 text-[#0C66E4]"
+                ? "bg-blue-50 text-primary"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -576,7 +576,7 @@ export default function FacilitiesPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-xs">
-            <thead className="bg-[#F3F6FC] text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-surface-muted text-[9px] font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Thiết bị</th>
                 <th className="px-4 py-3">Chi nhánh</th>
@@ -592,7 +592,7 @@ export default function FacilitiesPage() {
                 <tr className="border-t border-slate-100">
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                     <span className="inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin text-[#0C66E4]" />
+                      <Loader2 size={14} className="animate-spin text-primary" />
                       Đang tải danh sách thiết bị...
                     </span>
                   </td>
@@ -620,7 +620,7 @@ export default function FacilitiesPage() {
                   >
                     <td className="px-4 py-4">
                       <div className="flex items-start gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                           <PackageSearch size={16} />
                         </span>
                         <div>
@@ -715,10 +715,10 @@ export default function FacilitiesPage() {
 
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <PackageSearch size={18} />
                 </span>
                 <div>
@@ -891,7 +891,7 @@ export default function FacilitiesPage() {
                 type="button"
                 onClick={() => void submit()}
                 disabled={saving}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:opacity-50"
               >
                 {saving && <Loader2 size={13} className="animate-spin" />}
                 {saving ? "Đang lưu..." : "Lưu thiết bị"}

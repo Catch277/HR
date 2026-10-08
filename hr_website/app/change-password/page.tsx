@@ -19,7 +19,7 @@ function errorMessage(status: number, serverMessage?: string): string {
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
+  "w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-500/15";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -97,7 +97,7 @@ export default function ChangePasswordPage() {
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+        className="space-y-4 rounded-2xl border border-slate-200/80 bg-surface p-5 shadow-sm"
       >
         <label className="block text-xs font-semibold text-slate-600">
           Mật khẩu mới
@@ -136,15 +136,15 @@ export default function ChangePasswordPage() {
         <button
           type="submit"
           disabled={submitting || !password || !confirmPassword}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting && <Loader2 size={15} className="animate-spin" />}
           {submitting ? "Đang lưu..." : "Lưu mật khẩu mới"}
         </button>
       </form>
 
-      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-4">
-        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[#0C66E4]" />
+      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-surface-accent p-4">
+        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-primary" />
         <p className="text-xs text-slate-600">
           Mật khẩu tạm chỉ dùng một lần. Sau khi đổi, mật khẩu cũ không còn hiệu lực.
         </p>

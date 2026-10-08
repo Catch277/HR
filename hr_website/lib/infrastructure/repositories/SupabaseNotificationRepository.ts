@@ -14,18 +14,27 @@ export class SupabaseNotificationRepository
     userId: string,
     page: number,
     pageSize: number,
+    unreadOnly = false,
   ): Promise<PaginatedNotifications> {
     const supabase = await createSupabaseServerClient();
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const { data, error, count } = await supabase
+    let query = supabase
       .from("notifications")
       .select(
         "id, user_id, title, body, type, is_read, related_entity_type, related_entity_id, created_at",
         { count: "exact" },
       )
-      .eq("user_id", userId)
+      .eq("user_id", userId);
+
+    if (unreadOnly) {
+      // Counting only the unread rows is what makes the header badge exact: with `unread=true`
+      // and `page_size=1`, `count` is the unread total rather than the newest page's tally.
+      query = query.eq("is_read", false);
+    }
+
+    const { data, error, count } = await query
       .order("created_at", { ascending: false })
       .range(from, to);
 

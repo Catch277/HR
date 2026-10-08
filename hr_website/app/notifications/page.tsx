@@ -331,7 +331,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
+      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Hệ thống / SCRUM-48
@@ -347,7 +347,7 @@ export default function NotificationsPage() {
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Tải lại
@@ -355,7 +355,7 @@ export default function NotificationsPage() {
           <button
             type="button"
             onClick={openSettings}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
           >
             <Settings2 size={14} /> Cài đặt kênh nhận
           </button>
@@ -363,7 +363,7 @@ export default function NotificationsPage() {
             type="button"
             onClick={() => void markAllRead()}
             disabled={markingAll || unreadCount === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             {markingAll ? (
               <Loader2 size={14} className="animate-spin" />
@@ -382,7 +382,7 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
           {(
             [
@@ -397,7 +397,7 @@ export default function NotificationsPage() {
               onClick={() => setTab(option.value)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                 tab === option.value
-                  ? "bg-[#0C66E4] text-white"
+                  ? "bg-primary text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
@@ -436,7 +436,7 @@ export default function NotificationsPage() {
                     className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
                       item.is_read
                         ? "bg-slate-100 text-slate-500"
-                        : "bg-blue-50 text-[#0C66E4]"
+                        : "bg-blue-50 text-primary"
                     }`}
                   >
                     <Icon size={16} />
@@ -448,7 +448,7 @@ export default function NotificationsPage() {
                         {item.title}
                       </p>
                       {!item.is_read && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#0C66E4]" />
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                       )}
                     </div>
                     <p className="mt-0.5 whitespace-pre-line text-xs text-slate-600">
@@ -520,7 +520,7 @@ export default function NotificationsPage() {
           aria-modal="true"
           aria-label="Cài đặt kênh nhận thông báo"
         >
-          <div className="flex h-full w-full max-w-sm flex-col bg-white shadow-xl">
+          <div className="flex h-full w-full max-w-sm flex-col bg-surface shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Kênh nhận thông báo</h2>
@@ -564,7 +564,7 @@ export default function NotificationsPage() {
                       onChange={(event) =>
                         void toggleChannel(item.channel, event.target.checked)
                       }
-                      className="h-4 w-4 accent-[#0C66E4]"
+                      className="h-4 w-4 accent-primary"
                     />
                   </label>
                 ))

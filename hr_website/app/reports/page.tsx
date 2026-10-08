@@ -166,7 +166,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
+      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Tài chính &amp; thu / SCRUM-44
@@ -186,7 +186,7 @@ export default function ReportsPage() {
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Tải lại
@@ -194,14 +194,14 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
           >
             <Printer size={14} /> In sổ sách
           </button>
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+      <section className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           {PERIOD_OPTIONS.map((option) => (
             <button
@@ -213,7 +213,7 @@ export default function ReportsPage() {
               }}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                 period === option.value
-                  ? "bg-[#0C66E4] text-white"
+                  ? "bg-primary text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
@@ -229,7 +229,7 @@ export default function ReportsPage() {
               setLoading(true);
               setBranchId(event.target.value);
             }}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-[#0C66E4]"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-primary"
             aria-label="Chi nhánh"
           >
             <option value={ALL_BRANCHES}>Tất cả chi nhánh</option>
@@ -247,7 +247,7 @@ export default function ReportsPage() {
               setLoading(true);
               setDate(event.target.value || getBusinessDay(new Date()));
             }}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-[#0C66E4]"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-primary"
             aria-label="Ngày trong kỳ"
           />
 
@@ -272,12 +272,12 @@ export default function ReportsPage() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Tổng tiền đầu ca
                 </p>
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Wallet size={16} />
                 </span>
               </div>
@@ -289,7 +289,7 @@ export default function ReportsPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Tổng tiền cuối ca
@@ -306,7 +306,7 @@ export default function ReportsPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Doanh thu thuần
@@ -323,7 +323,7 @@ export default function ReportsPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   So với kỳ trước
@@ -358,7 +358,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <section className="rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">
                 Doanh thu theo {period === "year" ? "tháng" : "ngày"}
@@ -390,7 +390,7 @@ export default function ReportsPage() {
                     <div
                       key={point.bucket_start}
                       title={`${point.bucket_start}: ${formatCurrency(point.total_revenue_amount)} (${point.record_count} ca)`}
-                      className="flex-1 rounded-t bg-[#0C66E4]/80 transition-colors hover:bg-[#0C66E4]"
+                      className="flex-1 rounded-t bg-primary/80 transition-colors hover:bg-primary"
                       style={{ height: `${height}%` }}
                     />
                   );
@@ -399,7 +399,7 @@ export default function ReportsPage() {
             )}
           </section>
 
-          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="text-sm font-bold text-slate-900">Chi tiết theo mốc thời gian</h2>
               <p className="mt-0.5 text-[10px] text-slate-500">
@@ -439,7 +439,7 @@ export default function ReportsPage() {
                         <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">
                           {formatCurrency(point.total_close_amount)}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-[#0C66E4]">
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-primary">
                           {formatCurrency(point.total_revenue_amount)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">

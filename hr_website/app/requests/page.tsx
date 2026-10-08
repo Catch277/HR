@@ -291,7 +291,7 @@ export default function RequestsPage() {
           type="button"
           onClick={refresh}
           disabled={loading}
-          className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
           Làm mới
@@ -299,7 +299,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-surface p-4 shadow-sm">
           <p className="text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
             Tổng đơn
           </p>
@@ -309,7 +309,7 @@ export default function RequestsPage() {
           <p className="mt-1 text-[10px] text-slate-500">Toàn bộ đơn trên hệ thống</p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-surface p-4 shadow-sm">
           <p className="text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
             Chờ duyệt
           </p>
@@ -319,7 +319,7 @@ export default function RequestsPage() {
           <p className="mt-1 text-[10px] text-amber-600">Cần quản lý xử lý</p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-surface p-4 shadow-sm">
           <p className="text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
             Đã duyệt
           </p>
@@ -329,7 +329,7 @@ export default function RequestsPage() {
           <p className="mt-1 text-[10px] text-emerald-600">Đã ghi nhận vào lịch</p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-surface p-4 shadow-sm">
           <p className="text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
             Từ chối
           </p>
@@ -349,7 +349,7 @@ export default function RequestsPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-1" role="group" aria-label="Lọc theo trạng thái">
             {TABS.map((item) => (
@@ -359,7 +359,7 @@ export default function RequestsPage() {
                 onClick={() => setTab(item.key)}
                 className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                   tab === item.key
-                    ? "bg-[#0C66E4] text-white"
+                    ? "bg-primary text-white"
                     : "text-slate-600 hover:bg-slate-100"
                 }`}
               >
@@ -373,7 +373,7 @@ export default function RequestsPage() {
               aria-label="Lọc theo chi nhánh"
               value={branchFilter}
               onChange={(event) => setBranchFilter(event.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#0C66E4]"
+              className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs outline-none focus:border-primary"
             >
               <option value={ALL}>Tất cả chi nhánh</option>
               {branches.map((branch) => (
@@ -383,7 +383,7 @@ export default function RequestsPage() {
               ))}
             </select>
 
-            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2 text-xs xl:w-72">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-app px-3 py-2 text-xs xl:w-72">
               <Search size={14} className="shrink-0 text-slate-400" />
               <input
                 aria-label="Tìm đơn từ"
@@ -402,7 +402,7 @@ export default function RequestsPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-xs">
-            <thead className="bg-[#F3F6FC] text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-surface-muted text-[9px] font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Nhân viên</th>
                 <th className="px-4 py-3">Nội dung đơn</th>
@@ -417,7 +417,7 @@ export default function RequestsPage() {
                 <tr className="border-t border-slate-100">
                   <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                     <span className="inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin text-[#0C66E4]" />
+                      <Loader2 size={14} className="animate-spin text-primary" />
                       Đang tải danh sách đơn...
                     </span>
                   </td>
@@ -442,7 +442,7 @@ export default function RequestsPage() {
                   >
                     <td className="px-4 py-4">
                       <div className="flex items-start gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-[#0C66E4]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-primary">
                           {initials(item.requester?.full_name)}
                         </span>
                         <div>
@@ -535,7 +535,7 @@ export default function RequestsPage() {
 
       {rejectTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="font-bold text-slate-900">Từ chối đơn</h2>

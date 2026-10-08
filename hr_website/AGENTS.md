@@ -220,13 +220,23 @@ that must not live in SQL).
 - Tailwind CSS v4 (no `tailwind.config.*`; the PostCSS plugin is `@tailwindcss/postcss`). Reuse the
   existing visual language: primary `#0C66E4` with `blue-50` tints, surfaces `#F8F9FF`/`#F3F6FC`,
   `rounded-xl`/`rounded-2xl`, `border-slate-200/80`, small uppercase section labels, `lucide-react` icons.
+- **Never write a literal hex in a component.** Use the semantic tokens from `app/globals.css`:
+  `bg-surface` (panels — replaced every `bg-white`), `bg-app` (page canvas), `bg-surface-muted`,
+  `bg-canvas`, `bg-primary` / `text-primary` / `border-primary` / `hover:bg-primary-strong`. They resolve
+  per theme, which is what makes the dark mode work; a hex cannot. Need a new colour? Add a token, and
+  remember `--color-white` is shared by `bg-surface` and `text-white`, so it is never re-pointed.
+- Theme: `components/ThemeToggle.tsx` (Sáng / Tối / Theo hệ thống) writes `localStorage["humora-theme"]`
+  and toggles `.dark` on `<html>`; `app/layout.tsx` applies it before first paint with an inline script
+  (keep `suppressHydrationWarning` on `<html>`), and `.dark` re-points Tailwind's palette variables so
+  screens need no `dark:` variants. Use `dark:` only for a genuine exception (e.g. the Swagger UI frame).
 - Currency via `new Intl.NumberFormat("vi-VN")`, dates/sizes as `vi-VN`; keep copy in Vietnamese.
 - Every screen is Supabase-backed: `/` (Tổng quan), `/revenue`, `/reports`, `/notifications` and `/chat`
-  (Trợ lý AI → `POST /api/chat/ask`) all fetch `/api/*`; only the header search still simulates its
-  results. `/chat` is stateless — the endpoint takes one question and answers `{ answer, sources }` — so
-  the conversation lives in component state and the screen must not invent a history, a confidence
-  score or a step list. Wire a page to `/api/*` with real data when a task calls for it, and preserve
-  the existing layout and loading/empty states.
+  (Trợ lý AI → `POST /api/chat/ask`) all fetch `/api/*`, and so do the two header widgets — the search box
+  (`GET /api/search`) and the bell badge (`GET /api/notifications?unread=true&page_size=1`, where `total`
+  is the unread count). `/chat` is stateless — the endpoint takes one question and answers
+  `{ answer, sources }` — so the conversation lives in component state and the screen must not invent a
+  history, a confidence score or a step list. Wire a page to `/api/*` with real data when a task calls for
+  it, and preserve the existing layout and loading/empty states.
 - Language: code, identifiers and English-style comments stay in English. The Chat AI module
   (`ChatAnswerUseCase`, `GeminiLLMService`, `lib/domain/entities/ChatMessage.ts` and the `@swagger` text of
   `/api/chat/ask`) is documented in Vietnamese — keep that module consistent. Do not mass-translate

@@ -24,42 +24,74 @@ Scope: presentation only. For architecture, layering and API rules see `AGENTS.m
 
 ## 2. Colour tokens
 
-Defined in `app/globals.css`:
+Defined in `app/globals.css`, in two layers:
+
+1. **Semantic tokens** for the app's own colours. Components use these, never a literal hex:
+   `bg-surface` (panels), `bg-app` (page canvas), `bg-surface-muted` (table head, segmented tracks),
+   `bg-canvas` (chat transcript), `bg-primary` / `text-primary` / `border-primary` /
+   `hover:bg-primary-strong` (brand).
+2. **Tailwind's palette**, re-pointed inside the `.dark` block. Every palette utility compiles to a
+   `var(--color-…)` reference, so dark mode re-themes every screen without editing it; only the shades
+   actually in use are overridden (list them with `node .palette-probe.cjs`).
 
 ```css
 :root {
-  --background: #f8f9ff;  /* app canvas */
-  --foreground: #172033;  /* default text */
-  --primary: #0c66e4;     /* brand blue */
+  --surface: #ffffff;        /* panels */
+  --app-background: #f8f9ff; /* page canvas */
+  --surface-muted: #f3f6fc;
+  --canvas: #fbfcff;         /* chat transcript */
+  --primary: #0c66e4;
+  --primary-strong: #1d4ed8; /* hover of a brand action */
+  --foreground: #172033;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-be-vietnam-pro);
+  --color-surface: var(--surface);
+  --color-app: var(--app-background);
+  --color-surface-muted: var(--surface-muted);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+}
+
+.dark {
+  --surface: #131c2e;
+  --app-background: #0b1120;
+  --primary: #3b82f6;
+  --color-slate-900: #f0f4fa; /* the palette is re-pointed, not rewritten */
+  /* …slate/blue/emerald/amber/rose shades in use… */
 }
 ```
 
-> **Note / possible cleanup:** `--primary` exists but is **not** mapped in `@theme inline` (there is no
-> `--color-primary`), so `bg-primary` does not resolve. Shipping code hardcodes the hex instead.
-> Until that is mapped, write `bg-[#0C66E4]` / `text-[#0C66E4]` exactly as the existing screens do.
+> `--color-white` is deliberately **not** re-pointed: `bg-white` (panels) and `text-white` (text on
+> brand buttons) share it, so panels use `bg-surface` instead and `text-white` stays white. Adding a new
+> surface means adding a token — do not reintroduce a literal hex in a component.
 
 ### 2.1 Brand & surfaces (measured usage)
 
 | Token | Value | Utility as written | Uses |
 | --- | --- | --- | --- |
-| Primary | `#0C66E4` | `bg-[#0C66E4]`, `text-[#0C66E4]`, `border-[#0C66E4]` | 79 |
-| Canvas | `#F8F9FF` | `bg-[#F8F9FF]` (body + input wells) | 7 |
-| Inset / muted panel | `#F3F6FC` | `bg-[#F3F6FC]` (table head, segmented control, totals rows) | 10 |
-| Chat canvas | `#FBFCFF` | `bg-[#FBFCFF]` (AI transcript + nested step cards) | 2 |
-| Sidebar promo panel | `#F1F5FF` | `bg-[#F1F5FF]` | 1 |
-| Surface | white | `bg-white` | — |
+| Primary | `#0C66E4` | `bg-primary`, `text-primary`, `border-primary`, `hover:bg-primary-strong` | ~130 |
+| Canvas | `#F8F9FF` | `bg-app` (body, main, input wells) | 11 |
+| Inset / muted panel | `#F3F6FC` | `bg-surface-muted` (table head, segmented control, totals rows) | 8 |
+| Chat canvas | `#FBFCFF` | `bg-canvas` (AI transcript) | 1 |
+| Promo / info panel | `#F1F5FF` | `bg-surface-accent`, `hover:bg-surface-accent-strong` (sidebar promo + 4 info cards) | 6 |
+| Surface | white | `bg-surface` (cards, panels, header) | 123 |
 | Hairline (strong) | — | `border-slate-200/80` | 15 |
 | Hairline (default) | — | `border-slate-200` | 64 |
 | Hairline (inside cards) | — | `border-slate-100` | 27 |
 | Accent hairline | — | `border-blue-100` | 5 |
 
-### 2.2 Semantic tones
+### 2.2 Theme (Sáng / Tối / Theo hệ thống)
+
+`components/ThemeToggle.tsx` stores the choice in `localStorage["humora-theme"]`
+(`light` | `dark` | `system`) and toggles `.dark` on `<html>`. An inline script in `app/layout.tsx`
+applies it before first paint, so reloading in dark mode does not flash light. "Theo hệ thống" follows
+`prefers-color-scheme` live (`useSyncExternalStore` on the media query). The control is the compact
+segmented control from §6 — Sun / Moon / Monitor, `aria-pressed` on the active option, visible at every
+breakpoint in the header.
+
+### 2.3 Semantic tones
+
 
 Only these pairings are used. Reuse them rather than inventing new ones.
 
@@ -104,12 +136,12 @@ is the workhorse for labels and buttons.
 ### 4.1 App shell (`app/layout.tsx`)
 
 ```tsx
-<body className="... flex h-dvh overflow-hidden bg-[#F8F9FF] font-sans text-slate-900 antialiased
+<body className="... flex h-dvh overflow-hidden bg-app font-sans text-slate-900 antialiased
                  selection:bg-blue-100 selection:text-blue-900">
   <Sidebar />
   <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
     <Header />
-    <main className="min-h-0 flex-1 overflow-y-auto bg-[#F8F9FF] p-4 md:p-6">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-app p-4 md:p-6">
       <div className="mx-auto w-full max-w-[1440px]">{children}</div>
     </main>
   </div>

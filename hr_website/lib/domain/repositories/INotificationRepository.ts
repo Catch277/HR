@@ -9,6 +9,7 @@ export interface INotificationRepository {
     userId: string,
     page: number,
     pageSize: number,
+    unreadOnly?: boolean,
   ): Promise<PaginatedNotifications>;
 
   markAsRead(id: string, userId: string): Promise<void>;

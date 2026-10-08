@@ -31,7 +31,9 @@ worker.
 | `/login`, `/register` | Đăng nhập / Đăng ký | Supabase Auth sign-in and self-registration (both render outside the app shell) |
 | `/api-docs`        | —                    | Swagger UI for every endpoint                                                   |
 
-Quick search (SCRUM-49) is reachable from the header search box and from `GET /api/search`.
+Quick search (SCRUM-49) is reachable from the header search box and from `GET /api/search` — the box is
+wired to it, the bell shows an exact unread count, and the theme switch (Sáng / Tối / Theo hệ thống) sits
+next to them; see "Header" further down.
 
 ## Tech stack
 
@@ -179,7 +181,7 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `PATCH /api/attendance/{id}`         | session + role    | `attendance`                  | Sửa giờ: replaces giờ vào/ra, `status` and note, and stamps `corrected_by`/`corrected_at` with the mandatory `correction_reason`; `400` when giờ ra precedes giờ vào, `403` unless the caller is `OWNER`/`CHU` |
 | `PATCH /api/attendance/complaints/{id}` | session + role | `attendance`                  | Body `{ status: "RESOLVED" }` → closes an open khiếu nại and stamps `complaint_resolved_by`/`complaint_resolved_at`; `400` when the record has no complaint, `403` unless the caller is `OWNER`/`CHU` |
 | `GET /api/employee-status`           | session           | RPC `get_employee_status`     | One row per person for one business day (Asia/Bangkok), derived from the schedule + timesheet; filters `branch_id`, `work_date`                       |
-| `GET /api/notifications`             | session           | `notifications`               | Paginated: `page` (≥1), `page_size` (≤100, default 20) → `{ data, total, page, page_size }`                                                          |
+| `GET /api/notifications`             | session           | `notifications`               | Paginated: `page` (≥1), `page_size` (≤100, default 20), `unread=true` to keep only unread rows (which also makes `total` the exact unread count) → `{ data, total, page, page_size }` |
 | `PATCH /api/notifications/{id}/read` | session           | `notifications`               | Marks one notification read; `400` if `id` is not a UUID, `404` if it does not belong to you                                                         |
 | `GET /api/notifications/settings`    | session           | `notification_settings`       | Channel preferences of the caller                                                                                                                    |
 | `PUT /api/notifications/settings`    | session           | `notification_settings`       | Body `{ settings: [{ channel, enabled }] }`, upserted per `(user_id, channel)`                                                                       |
@@ -410,9 +412,18 @@ An honest snapshot of what is real and what is still a prototype:
   manager verification), the live employee status RPC, notifications and notification settings, quick
   search, user lookup, and the AI assistant endpoint.
 - **No demo data left:** `lib/mock/adminStore.ts` was deleted together with its last consumer, once
-  trạng thái nhân viên moved to `get_employee_status`. Every screen now reads a table or an RPC.
-- **UI prototypes:** the header search still simulates its results instead of calling
-  `GET /api/search`; every screen including `/chat` (Trợ lý AI) is wired to its API now. `/chat` posts
+  trạng thái nhân viên moved to `get_employee_status`. Every screen now reads a table or an RPC, and the
+  last simulated thing — the header search box — is wired to `GET /api/search` too:
+- **Header (`components/Header.tsx`):** the search box calls `GET /api/search` (debounced 250 ms, aborts
+  the in-flight request, ↑/↓/Enter/Esc navigation, click-through to `/staff`, `/requests` or
+  `/schedules`), the bell links to `/notifications` with an exact unread count
+  (`GET /api/notifications?unread=true&page_size=1` → `total`, a filter added for this), and the
+  Sáng / Tối / Theo hệ thống switch stores `localStorage["humora-theme"]`. The theme is applied as
+  `.dark` on `<html>` by an inline script in `app/layout.tsx` (no flash on reload) and re-points
+  Tailwind's palette variables in `app/globals.css`, so dark mode covers every screen; components use
+  the semantic tokens (`bg-surface`, `bg-app`, `bg-surface-muted`, `bg-canvas`, `bg-primary`,
+  `text-primary`, `hover:bg-primary-strong`) instead of hexes.
+- **`/chat` (Trợ lý AI)** posts
   the question to `POST /api/chat/ask` and renders the returned `answer` together with the `sources`
   it was built from — each with the document name and the vector search's similarity — so the
   citation panel is real data, not decoration. Conversations live in component state only (the

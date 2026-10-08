@@ -248,7 +248,7 @@ export default function EmployeeStatusPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-start">
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] text-slate-500">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-[10px] text-slate-500">
             <Clock3 size={12} className="text-slate-400" />
             Cập nhật lúc {formatTime(updatedAt)}
           </span>
@@ -256,7 +256,7 @@ export default function EmployeeStatusPage() {
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
             Làm mới
@@ -265,7 +265,7 @@ export default function EmployeeStatusPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Đang làm việc
@@ -282,7 +282,7 @@ export default function EmployeeStatusPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-amber-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Chưa vào ca
@@ -299,12 +299,12 @@ export default function EmployeeStatusPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Nghỉ phép
             </p>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <CalendarOff size={16} />
             </span>
           </div>
@@ -316,7 +316,7 @@ export default function EmployeeStatusPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-rose-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Chấm công ngoài vùng
@@ -343,9 +343,9 @@ export default function EmployeeStatusPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-3 xl:flex-row xl:items-center xl:justify-between">
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2 text-xs xl:w-72">
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-app px-3 py-2 text-xs xl:w-72">
             <Search size={14} className="shrink-0 text-slate-400" />
             <input
               aria-label="Tìm nhân viên"
@@ -361,7 +361,7 @@ export default function EmployeeStatusPage() {
               aria-label="Lọc theo chi nhánh"
               value={branchFilter}
               onChange={(event) => setBranchFilter(event.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#0C66E4]"
+              className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs outline-none focus:border-primary"
             >
               <option value={ALL}>Tất cả chi nhánh</option>
               {branches.map((branch) => (
@@ -378,7 +378,7 @@ export default function EmployeeStatusPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-xs">
-            <thead className="bg-[#F3F6FC] text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-surface-muted text-[9px] font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Nhân viên</th>
                 <th className="px-4 py-3">Chi nhánh hôm nay</th>
@@ -393,7 +393,7 @@ export default function EmployeeStatusPage() {
                 <tr className="border-t border-slate-100">
                   <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                     <span className="inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin text-[#0C66E4]" />
+                      <Loader2 size={14} className="animate-spin text-primary" />
                       Đang tải trạng thái nhân viên...
                     </span>
                   </td>
@@ -421,7 +421,7 @@ export default function EmployeeStatusPage() {
                     >
                       <td className="px-4 py-4">
                         <div className="flex items-start gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-[#0C66E4]">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-primary">
                             {initials(status.full_name)}
                           </span>
                           <div>

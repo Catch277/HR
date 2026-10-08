@@ -521,7 +521,7 @@ export default function SchedulesPage() {
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
             Làm mới
@@ -530,14 +530,14 @@ export default function SchedulesPage() {
             type="button"
             onClick={() => setWeekStart(addDays(weekStart, -7))}
             aria-label="Tuần trước"
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-surface p-2 text-slate-600 hover:bg-slate-50"
           >
             <ChevronLeft size={14} />
           </button>
-          <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+          <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-semibold text-slate-700">
             Tuần {formatWeekRange(weekStart)}
             {isCurrentWeek && (
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#0C66E4]">
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-primary">
                 Tuần này
               </span>
             )}
@@ -546,7 +546,7 @@ export default function SchedulesPage() {
             type="button"
             onClick={() => setWeekStart(addDays(weekStart, 7))}
             aria-label="Tuần sau"
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-surface p-2 text-slate-600 hover:bg-slate-50"
           >
             <ChevronRight size={14} />
           </button>
@@ -554,7 +554,7 @@ export default function SchedulesPage() {
             <button
               type="button"
               onClick={() => setWeekStart(startOfWeek(todayInBangkok()))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
               Về tuần này
             </button>
@@ -562,7 +562,7 @@ export default function SchedulesPage() {
           <button
             type="button"
             onClick={() => openCreate(isCurrentWeek ? todayInBangkok() : weekStart)}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
           >
             <UserPlus size={14} /> Xếp ca
           </button>
@@ -570,12 +570,12 @@ export default function SchedulesPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-blue-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Ca đã xếp trong tuần
             </p>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <CalendarRange size={16} />
             </span>
           </div>
@@ -587,7 +587,7 @@ export default function SchedulesPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-emerald-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Nhân viên được xếp
@@ -604,7 +604,7 @@ export default function SchedulesPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-sky-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-sky-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Ngày nghỉ phép
@@ -621,7 +621,7 @@ export default function SchedulesPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-teal-200 bg-white p-4 shadow-sm">
+        <article className="rounded-xl border border-slate-200/80 border-b-2 border-b-teal-200 bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="max-w-44 text-[10px] font-semibold uppercase leading-relaxed tracking-wide text-slate-500">
               Chi nhánh có lịch
@@ -645,9 +645,9 @@ export default function SchedulesPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-3 xl:flex-row xl:items-center xl:justify-between">
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2 text-xs xl:w-96">
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-app px-3 py-2 text-xs xl:w-96">
             <Search size={14} className="shrink-0 text-slate-400" />
             <input
               aria-label="Tìm nhân viên trong lịch"
@@ -662,7 +662,7 @@ export default function SchedulesPage() {
             aria-label="Lọc theo chi nhánh"
             value={branchFilter}
             onChange={(event) => setBranchFilter(event.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#0C66E4]"
+            className="rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs outline-none focus:border-primary"
           >
             <option value={ALL}>Tất cả chi nhánh</option>
             {branches.map((branch) => (
@@ -679,7 +679,7 @@ export default function SchedulesPage() {
             onClick={() => setStatusFilter(ALL)}
             className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
               statusFilter === ALL
-                ? "bg-blue-50 text-[#0C66E4]"
+                ? "bg-blue-50 text-primary"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -706,7 +706,7 @@ export default function SchedulesPage() {
 
         {loading && (
           <p className="flex items-center justify-center gap-2 px-4 py-10 text-xs text-slate-400">
-            <Loader2 size={14} className="animate-spin text-[#0C66E4]" />
+            <Loader2 size={14} className="animate-spin text-primary" />
             Đang tải lịch làm việc...
           </p>
         )}
@@ -717,11 +717,11 @@ export default function SchedulesPage() {
 
             return (
               <div key={day} className="border-t border-slate-100 first:border-t-0">
-                <div className="flex items-center justify-between bg-[#F8F9FF] px-4 py-2">
+                <div className="flex items-center justify-between bg-app px-4 py-2">
                   <p className="flex items-center gap-2 text-[11px] font-semibold text-slate-700">
                     {weekdayLabel(day)} · {formatDay(day)}
                     {day === todayInBangkok() && (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#0C66E4]">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-primary">
                         Hôm nay
                       </span>
                     )}
@@ -733,7 +733,7 @@ export default function SchedulesPage() {
                     <button
                       type="button"
                       onClick={() => openCreate(day)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-surface px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       <Plus size={12} /> Thêm ca
                     </button>
@@ -751,7 +751,7 @@ export default function SchedulesPage() {
                         key={assignment.id}
                         className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70"
                       >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-[#0C66E4]">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-primary">
                           {initials(assignment.employee?.full_name)}
                         </span>
                         <div className="min-w-40">
@@ -820,10 +820,10 @@ export default function SchedulesPage() {
 
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <CalendarRange size={18} />
                 </span>
                 <div>
@@ -847,7 +847,7 @@ export default function SchedulesPage() {
                 </p>
 
                 {form.employeeId ? (
-                  <div className="mt-1 flex items-center justify-between rounded-lg border border-slate-200 bg-[#F8F9FF] px-3 py-2.5">
+                  <div className="mt-1 flex items-center justify-between rounded-lg border border-slate-200 bg-app px-3 py-2.5">
                     <span className="text-sm font-normal text-slate-700">
                       {employeeName}
                     </span>
@@ -857,7 +857,7 @@ export default function SchedulesPage() {
                         setForm((value) => ({ ...value, employeeId: "" }));
                         setEmployeeName("");
                       }}
-                      className="text-[11px] font-semibold text-[#0C66E4] hover:underline"
+                      className="text-[11px] font-semibold text-primary hover:underline"
                     >
                       Đổi nhân viên
                     </button>
@@ -1036,7 +1036,7 @@ export default function SchedulesPage() {
                 type="button"
                 onClick={() => void submit()}
                 disabled={saving}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:opacity-50"
               >
                 {saving && <Loader2 size={13} className="animate-spin" />}
                 {saving ? "Đang lưu..." : "Lưu ca làm việc"}

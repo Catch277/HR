@@ -69,7 +69,7 @@ function errorMessage(status: number, serverMessage?: string): string {
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
+  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-500/15";
 
 export default function RevenuePage() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -299,7 +299,7 @@ export default function RevenuePage() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
+      <section className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Vận hành ca / SCRUM-39 &amp; SCRUM-40
@@ -314,14 +314,14 @@ export default function RevenuePage() {
           type="button"
           onClick={refresh}
           disabled={loading}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Tải lại
         </button>
       </section>
 
-      <section className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+      <section className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
         <label className="text-xs font-semibold text-slate-600">
           Chi nhánh
           <select
@@ -371,9 +371,9 @@ export default function RevenuePage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <Unlock size={18} />
             </span>
             <div>
@@ -413,7 +413,7 @@ export default function RevenuePage() {
                 type="button"
                 onClick={() => void declareOpen()}
                 disabled={busy !== "" || !branchId}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy === "open" ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -426,7 +426,7 @@ export default function RevenuePage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
               <LockKeyhole size={18} />
@@ -463,7 +463,7 @@ export default function RevenuePage() {
                 </span>
                 <span className="text-slate-600">
                   Doanh thu
-                  <b className="mt-0.5 block tabular-nums text-[#0C66E4]">
+                  <b className="mt-0.5 block tabular-nums text-primary">
                     {formatCurrency(
                       (todayRecord.close_amount ?? 0) - todayRecord.open_amount,
                     )}
@@ -501,7 +501,7 @@ export default function RevenuePage() {
                           setCount(denomination, Number(event.target.value))
                         }
                         aria-label={`Số tờ ${denomination}`}
-                        className="w-full rounded border border-slate-200 px-2 py-1 text-right text-xs tabular-nums outline-none focus:border-[#0C66E4]"
+                        className="w-full rounded border border-slate-200 px-2 py-1 text-right text-xs tabular-nums outline-none focus:border-primary"
                       />
                     </div>
                   ))}
@@ -542,7 +542,7 @@ export default function RevenuePage() {
                 type="button"
                 onClick={() => void declareClose()}
                 disabled={busy !== ""}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy === "close" ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -556,7 +556,7 @@ export default function RevenuePage() {
         </section>
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Khai báo 7 ngày gần đây</h2>
@@ -614,7 +614,7 @@ export default function RevenuePage() {
                         className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${
                           revenue !== null && revenue < 0
                             ? "text-rose-600"
-                            : "text-[#0C66E4]"
+                            : "text-primary"
                         }`}
                       >
                         {revenue === null ? "—" : formatCurrency(revenue)}

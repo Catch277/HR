@@ -71,7 +71,7 @@ function joinErrorMessage(status: number, serverMessage?: string): string {
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-[#0C66E4] focus:ring-2 focus:ring-blue-500/15";
+  "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-500/15";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -184,8 +184,8 @@ export default function OnboardingPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <section className="flex flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0C66E4]">
+        <section className="flex flex-col rounded-2xl border border-slate-200/80 bg-surface p-5 shadow-sm">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-primary">
             <Landmark size={20} />
           </span>
           <h2 className="mt-4 font-bold text-slate-900">Tạo tổ chức mới</h2>
@@ -206,7 +206,7 @@ export default function OnboardingPage() {
             type="button"
             onClick={() => void createOrganization()}
             disabled={busy !== "" || organizationName.trim().length < MIN_NAME_LENGTH}
-            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy === "create" ? (
               <Loader2 size={15} className="animate-spin" />
@@ -217,7 +217,7 @@ export default function OnboardingPage() {
           </button>
         </section>
 
-        <section className="flex flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <section className="flex flex-col rounded-2xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
             <KeyRound size={20} />
           </span>
@@ -251,8 +251,8 @@ export default function OnboardingPage() {
         </section>
       </div>
 
-      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-4">
-        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[#0C66E4]" />
+      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-surface-accent p-4">
+        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-primary" />
         <div className="text-xs text-slate-600">
           <p className="font-semibold text-slate-800">Vì sao cần cả mã và danh sách đăng ký?</p>
           <p className="mt-1">

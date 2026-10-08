@@ -22,6 +22,14 @@
  *           maximum: 100
  *           default: 20
  *         description: Number of items per page.
+ *       - in: query
+ *         name: unread
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: |
+ *           Set to `true` to return and count only unread notifications. The header uses
+ *           `unread=true&page_size=1` so `total` is the exact unread count for its badge.
  *     responses:
  *       200:
  *         description: A paginated list of notifications.
@@ -76,6 +84,19 @@ export async function GET(request: NextRequest) {
 
     const clampedPageSize = Math.min(pageSize, MAX_PAGE_SIZE);
 
+    const unreadParam = request.nextUrl.searchParams.get("unread");
+
+    if (
+      unreadParam !== null &&
+      unreadParam !== "true" &&
+      unreadParam !== "false"
+    ) {
+      return NextResponse.json(
+        { error: "unread must be true or false." },
+        { status: 400 },
+      );
+    }
+
     const getNotifications = new GetUserNotificationsUseCase(
       new SupabaseNotificationRepository(),
     );
@@ -83,6 +104,7 @@ export async function GET(request: NextRequest) {
       user.id,
       page,
       clampedPageSize,
+      unreadParam === "true",
     );
 
     return NextResponse.json(result);

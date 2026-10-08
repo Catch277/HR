@@ -243,12 +243,12 @@ export default function StaffPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Tổng tài khoản
             </p>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
               <Users size={16} />
             </span>
           </div>
@@ -256,7 +256,7 @@ export default function StaffPage() {
           <p className="mt-1 text-[10px] text-slate-500">Gồm cả tài khoản đã nghỉ việc</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Đang làm việc
@@ -271,7 +271,7 @@ export default function StaffPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Đã nghỉ việc
@@ -289,8 +289,8 @@ export default function StaffPage() {
         </div>
       </div>
 
-      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-[#F1F5FF] p-4">
-        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[#0C66E4]" />
+      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-surface-accent p-4">
+        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-primary" />
         <div className="text-xs text-slate-600">
           <p className="font-semibold text-slate-800">
             Tài khoản do nhân viên tự đăng ký, vai trò do bạn cấp
@@ -311,7 +311,7 @@ export default function StaffPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex w-full max-w-md items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
             <Search size={15} className="text-slate-400" />
@@ -401,7 +401,7 @@ export default function StaffPage() {
                           onClick={() =>
                             updateDraft(member.id, { isActive: !draft.isActive })
                           }
-                          className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-[#0C66E4] hover:underline"
+                          className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
                         >
                           <RotateCcw size={12} />
                           {draft.isActive ? "Cho nghỉ việc" : "Kích hoạt lại"}
@@ -415,7 +415,7 @@ export default function StaffPage() {
                           type="button"
                           onClick={() => void save(member)}
                           disabled={!dirty || savingId === member.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C66E4] px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
                         >
                           {savingId === member.id ? (
                             <Loader2 size={13} className="animate-spin" />

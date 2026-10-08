@@ -15,20 +15,43 @@ export const metadata: Metadata = {
   description: "Hệ thống quản lý nhân sự và vận hành Humora",
 };
 
+/**
+ * Chạy trước lần vẽ đầu tiên: đọc lựa chọn giao diện đã lưu (Sáng / Tối / Theo hệ thống) và gắn lớp
+ * `.dark` lên `<html>`, để tải lại trang ở chế độ tối không bị nháy sáng. Viết thẳng trong layout vì
+ * mọi thứ được import sẽ chạy quá muộn.
+ */
+const THEME_INIT_SCRIPT = `
+(function () {
+  try {
+    var stored = localStorage.getItem("humora-theme");
+    var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (stored === "dark" || ((stored === "system" || !stored) && prefersDark)) {
+      document.documentElement.classList.add("dark");
+    }
+  } catch (error) {
+    /* Chế độ riêng tư hoặc storage bị chặn: dùng giao diện sáng. */
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi">
+    // `suppressHydrationWarning`: lớp `.dark` do script trên gắn trước khi React hydrate.
+    <html lang="vi" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body
-        className={`${beVietnamPro.variable} flex h-dvh overflow-hidden bg-[#F8F9FF] font-sans text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900`}
+        className={`${beVietnamPro.variable} flex h-dvh overflow-hidden bg-app font-sans text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900`}
       >
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header />
-          <main className="min-h-0 flex-1 overflow-y-auto bg-[#F8F9FF] p-4 md:p-6">
+          <main className="min-h-0 flex-1 overflow-y-auto bg-app p-4 md:p-6">
             <div className="mx-auto w-full max-w-[1440px]">{children}</div>
           </main>
         </div>
@@ -36,3 +59,4 @@ export default function RootLayout({
     </html>
   );
 }
+
