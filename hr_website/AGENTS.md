@@ -96,6 +96,8 @@ hr_website/
 │   ├── publicPaths.ts            # Screens rendered outside the shell (proxy.ts + Header/Sidebar)
 │   └── swagger.ts                # OpenAPI definition + shared component schemas
 ├── scripts/generate-swagger.ts   # Builds public/swagger.json; exits 1 when no paths are found
+├── scripts/ingest-knowledge.ts   # docs/*.md → chunks + embeddings → supabase/sql/knowledge_seed.sql
+├── docs/                         # Source documents for the AI knowledge base (README.md is skipped)
 ├── supabase/sql/SCRUM-*.sql      # Idempotent schema/RLS/RPC scripts applied by hand
 └── public/swagger.json           # Generated — never edit by hand
 ```

@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated knowledge seed (large, contains document text + embeddings — paste it into the SQL Editor)
+/supabase/sql/knowledge_seed.sql

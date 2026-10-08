@@ -95,6 +95,8 @@ hr_website/
 │   ├── publicPaths.ts            Screens that hide the shell (/login, /register) — see proxy.ts
 │   └── swagger.ts                OpenAPI definition + shared component schemas
 ├── scripts/generate-swagger.ts   Writes public/swagger.json (runs via predev / prebuild)
+├── scripts/ingest-knowledge.ts   Chunks docs/ → embeds → writes supabase/sql/knowledge_seed.sql
+├── docs/                         Source documents (.md/.txt) for the AI knowledge base
 ├── supabase/sql/                 Idempotent SQL scripts, applied by hand (see Database)
 ├── public/swagger.json           Generated — never edit by hand
 └── AGENTS.md / CLAUDE.md         Agent and contributor rules (single source of truth)
@@ -348,7 +350,15 @@ The models are pinned, not aliased: `text-embedding-004` and `gemini-1.5-flash` 
 ("no longer available") and the `gemini-flash-latest` alias measured 2/4 calls failing with `503
 high demand`. Verify a candidate with `GET /v1beta/models?key=…` before switching.
 
-**Where the assistant gets its information from:** exactly two tables — `company_documents`
+**Loading documents:** put `.md` / `.txt` files in `docs/` — one file per document, and the first `#`
+heading becomes the citation title — then run `npx tsx scripts/ingest-knowledge.ts`. It chunks the text
+(`--max-chars`, default 1000, split on blank lines), embeds every chunk with `gemini-embedding-001` at
+768 dims, and writes `supabase/sql/knowledge_seed.sql` to paste into the SQL Editor: this repo holds no
+service-role key on purpose, so the privileged write happens in the editor, where `postgres` owns the
+tables. Re-running is safe — the generated script deletes exactly the titles present in the source
+folder before inserting, so edits replace rather than duplicate. Contracts are per person:
+`npx tsx scripts/ingest-knowledge.ts --table user_contracts --user-id <uuid> --source docs/contracts`.
+Details and conventions: `docs/README.md`.
 (company-wide, columns `id, content, embedding, title, created_at`) and `user_contracts` (rows scoped to
 the caller by `user_id`, same columns). `GET /api/chat/sources` reports both, and the screen's "Nguồn
 tri thức" panel renders it: total chunks plus the document titles with their chunk counts. When both are
