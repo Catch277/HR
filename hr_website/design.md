@@ -430,10 +430,17 @@ Transcript canvas `bg-[#FBFCFF]`. User message: right-aligned bubble
 `ml-auto max-w-[88%]` + `rounded-xl rounded-tr-sm bg-[#0C66E4] px-4 py-3 text-xs text-white shadow-sm`
 with a `bg-blue-100 text-[#0C66E4]` avatar. Assistant message: white
 `rounded-xl rounded-tl-sm border border-slate-200/70 bg-white p-4 shadow-sm` card with a brand-square
-avatar, a `BookOpen` source line in `text-[10px] font-semibold text-[#0C66E4]`, numbered steps as
-`rounded-lg border border-slate-100 bg-[#FBFCFF] p-3` list items, and citation chips
-`rounded-md bg-blue-50 px-2 py-1 text-[9px] font-medium text-[#0C66E4]`. Thinking state:
-`Loader2 animate-spin` + `Đang phân tích dữ liệu...`.
+avatar, the answer text in `whitespace-pre-line`, a `BookOpen` source line in
+`text-[10px] font-semibold text-[#0C66E4]`, and a `<details>` block listing the real retrieved
+chunks — one row per source with its name (truncated) and a `Độ liên quan 87%` chip derived from the
+vector search's cosine similarity. Thinking state: `Loader2 animate-spin` +
+`Đang tra cứu tài liệu nội bộ...`; a failed call renders a rose card in the transcript with a
+`Thử lại` button instead of losing the question.
+
+The screen is wired to `POST /api/chat/ask` (the Chat AI module, documented in Vietnamese) and keeps
+the conversation in component state only: there is no history endpoint, so the rail shows suggested
+questions and the answer's citations rather than a fake "recent conversations" list, and nothing on
+the screen invents a confidence score or a step list the endpoint never returned.
 
 ### 7.15 Alert / warning card
 

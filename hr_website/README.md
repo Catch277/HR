@@ -381,8 +381,13 @@ An honest snapshot of what is real and what is still a prototype:
   search, user lookup, and the AI assistant endpoint.
 - **No demo data left:** `lib/mock/adminStore.ts` was deleted together with its last consumer, once
   trạng thái nhân viên moved to `get_employee_status`. Every screen now reads a table or an RPC.
-- **UI prototypes:** the chat screen renders hard-coded demo data, and the header search simulates its
-  results instead of calling `GET /api/search`. The four navigation screens are wired: `/` (Tổng quan)
+- **UI prototypes:** the header search still simulates its results instead of calling
+  `GET /api/search`; every screen including `/chat` (Trợ lý AI) is wired to its API now. `/chat` posts
+  the question to `POST /api/chat/ask` and renders the returned `answer` together with the `sources`
+  it was built from — each with the document name and the vector search's similarity — so the
+  citation panel is real data, not decoration. Conversations live in component state only (the
+  endpoint is stateless) and a failed call stays in the transcript with a `Thử lại` button. The five
+  navigation screens are wired too: `/` (Tổng quan)
   composes `get_employee_status`, the request queue, today's timesheet and the monthly revenue report;
   `/revenue` opens and closes the business day per branch and lists the last week from `GET /api/revenue`;
   `/reports` is a thin view over `get_revenue_report` with period, branch and date filters; `/notifications`

@@ -1,102 +1,185 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
-  Activity,
-  ArrowUpRight,
+  AlertTriangle,
   BookOpen,
   Bot,
-  BriefcaseBusiness,
   Check,
+  ChevronDown,
   Copy,
   FileText,
-  History,
   Loader2,
-  Mic,
-  Paperclip,
   PlusCircle,
   RotateCw,
   Send,
-  Settings2,
-  ShieldCheck,
   Sparkles,
+  ShieldCheck,
   UserRound,
-  WalletCards,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 
-interface Message {
-  id: number;
-  text: string;
-  sender: "user" | "ai";
-  steps?: string[];
-  confidence?: string;
-  source?: string;
+import type { DocumentChunk } from "@/lib/domain/entities/ChatMessage";
+
+/** Câu hỏi gợi ý: đều là câu hỏi về quy chế/tài liệu nội bộ — đúng phạm vi trợ lý tra cứu được. */
+const SUGGESTED_QUESTIONS = [
+  "Chính sách nghỉ phép năm của công ty là bao nhiêu ngày?",
+  "Thủ tục xin đổi ca làm việc như thế nào?",
+  "Khi két tiền cuối ca bị hụt thì xử lý theo quy trình nào?",
+  "Chính sách phụ cấp ca tối được quy định ra sao?",
+];
+
+const MAX_QUESTION_LENGTH = 1000;
+
+type ChatMessage =
+  | { id: string; role: "user"; text: string }
+  | { id: string; role: "ai"; text: string; sources: DocumentChunk[] }
+  | { id: string; role: "error"; text: string; question: string };
+
+let messageCounter = 0;
+
+function nextMessageId(): string {
+  messageCounter += 1;
+  return `msg-${Date.now()}-${messageCounter}`;
+}
+
+/** Điểm tương đồng cosine [0,1] của vector search, hiển thị theo phần trăm. */
+function formatSimilarity(similarity: number): string {
+  if (!Number.isFinite(similarity)) {
+    return "—";
+  }
+
+  return `${Math.round(similarity * 100)}%`;
+}
+
+function errorMessageFor(status: number, serverMessage?: string): string {
+  if (status === 401) {
+    return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử lại.";
+  }
+
+  return (
+    serverMessage ??
+    "Không thể xử lý yêu cầu. Vui lòng thử lại sau."
+  );
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      text: "Cho mình hỏi quy định về việc nhân viên giải trình khi két tiền ca làm việc bị hụt trên 100.000 đồng thì xử lý như thế nào?",
-      sender: "user",
-    },
-    {
-      id: 2,
-      text: "Theo quy chế Quản lý Quỹ tiền mặt & Doanh thu ca làm việc, trường hợp thiếu hụt từ 100.000 đồng trở lên cần xử lý theo 3 bước sau:",
-      sender: "ai",
-      confidence: "99,4%",
-      source: "Quy chế Tài chính & Chốt ca bán hàng · Mục 4.2",
-      steps: [
-        "Lập biên bản kiểm quỹ ngay tại thời điểm chốt ca. Bắt buộc kích hoạt mẫu phiếu kiểm kê tiền mặt trên hệ thống POS.",
-        "Ký xác nhận 2 bên. Người bàn giao và người nhận ca cùng ký xác nhận trên biên bản và đính kèm tài liệu trước khi bàn giao.",
-        "Nhập giải trình chi tiết vào hệ thống trong vòng 2 giờ kể từ khi hết ca. Nếu chênh lệch do lỗi kết nối POS hoặc sai sót kỹ thuật máy QR, đội Kỹ thuật & Kế toán sẽ hỗ trợ đối soát bù trừ trong ngày.",
-      ],
-    },
-  ]);
-  const [inputMessage, setInputMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isAsking, setIsAsking] = useState(false);
+  const [copiedId, setCopiedId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isAsking]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || isLoading) return;
+  /** Gọi `/api/chat/ask`: embedding câu hỏi → vector search tài liệu → Gemini sinh câu trả lời. */
+  async function ask(question: string) {
+    const trimmed = question.trim();
 
-    const userMsg: Message = {
-      id: Date.now(),
-      text: inputMessage,
-      sender: "user",
-    };
+    if (trimmed === "" || isAsking) {
+      return;
+    }
 
-    setMessages((prev) => [...prev, userMsg]);
-    setInputMessage("");
-    setIsLoading(true);
+    setMessages((current) => [
+      ...current.filter(
+        (message) => message.role !== "error" || message.question !== trimmed,
+      ),
+      { id: nextMessageId(), role: "user", text: trimmed },
+    ]);
+    setInput("");
+    setIsAsking(true);
+    setCopiedId("");
 
-    // Mock API call to POST /api/chat/ask
-    setTimeout(() => {
-      const aiMsg: Message = {
-        id: Date.now() + 1,
-        text: "Dựa trên dữ liệu và tài liệu nội bộ hiện có, đây là hướng xử lý phù hợp:",
-        sender: "ai",
-        confidence: "97,8%",
-        source: "Sổ tay Nhân sự Humora · Quy trình vận hành",
-        steps: [
-          "Kiểm tra thông tin yêu cầu và dữ liệu ca làm liên quan.",
-          "Đối chiếu với quy định đang áp dụng tại chi nhánh.",
-          "Ghi nhận kết quả vào hồ sơ và liên hệ quản lý trực tiếp nếu cần xác minh thêm.",
-        ],
+    try {
+      const response = await fetch("/api/chat/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: trimmed }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        setMessages((current) => [
+          ...current,
+          {
+            id: nextMessageId(),
+            role: "error",
+            text: errorMessageFor(response.status, data?.error),
+            question: trimmed,
+          },
+        ]);
+        return;
+      }
+
+      const data = (await response.json()) as {
+        answer?: unknown;
+        sources?: unknown;
       };
-      setMessages((prev) => [...prev, aiMsg]);
-      setIsLoading(false);
-    }, 1500);
-  };
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: nextMessageId(),
+          role: "ai",
+          text:
+            typeof data.answer === "string" && data.answer.trim() !== ""
+              ? data.answer
+              : "Trợ lý không trả về nội dung nào cho câu hỏi này.",
+          sources: Array.isArray(data.sources)
+            ? (data.sources as DocumentChunk[])
+            : [],
+        },
+      ]);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          id: nextMessageId(),
+          role: "error",
+          text: "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+          question: trimmed,
+        },
+      ]);
+    } finally {
+      setIsAsking(false);
+    }
+  }
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    void ask(input);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Gợi ý dưới ô nhập nói "Enter để gửi · Shift + Enter xuống dòng" — xử lý cho đúng lời hứa đó.
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void ask(input);
+    }
+  }
+
+  async function copyAnswer(message: ChatMessage) {
+    if (message.role !== "ai") {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(message.text);
+      setCopiedId(message.id);
+    } catch {
+      setCopiedId("");
+    }
+  }
+
+  function startNewConversation() {
+    setMessages([]);
+    setInput("");
+    setCopiedId("");
+  }
 
   return (
     <div className="space-y-4">
@@ -106,173 +189,93 @@ export default function ChatPage() {
             <Bot size={18} />
           </span>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-slate-900">
-                Trợ lý Nhân sự & Vận hành Humora
-              </h1>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700">
-                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                v2.4 Active
-              </span>
-            </div>
+            <h1 className="text-sm font-bold text-slate-900">
+              Trợ lý Nhân sự &amp; Vận hành Humora
+            </h1>
             <p className="mt-1 text-[10px] text-slate-500">
-              Hỗ trợ đối soát, tra cứu quy chế và giải quyết tác vụ thường ngày.
+              Trả lời câu hỏi về quy chế, quy trình và hợp đồng nội bộ — kèm trích dẫn tài liệu.
             </p>
           </div>
         </div>
-        <div className="flex gap-1 rounded-lg bg-[#F3F6FC] p-1 text-[10px] font-medium text-slate-500">
-          <button className="rounded-md bg-white px-3 py-1.5 text-[#0C66E4] shadow-sm">
-            <Sparkles size={12} className="mr-1 inline" />
-            Copilot toàn quyền
-          </button>
-          <button className="rounded-md px-3 py-1.5 hover:text-slate-800">
-            <BookOpen size={12} className="mr-1 inline" />
-            Sổ tay số
-          </button>
-          <button className="rounded-md px-3 py-1.5 hover:text-slate-800">
-            Truy vấn ERP
-          </button>
+        <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-medium text-slate-500">
+          <span className="flex items-center gap-1 rounded-full bg-[#F3F6FC] px-2.5 py-1">
+            <BookOpen size={11} className="text-[#0C66E4]" />
+            Tài liệu công ty
+          </span>
+          <span className="flex items-center gap-1 rounded-full bg-[#F3F6FC] px-2.5 py-1">
+            <FileText size={11} className="text-[#0C66E4]" />
+            Hợp đồng của bạn
+          </span>
+          <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+            <Sparkles size={11} />
+            gemini-1.5-flash
+          </span>
         </div>
       </div>
 
       <div className="grid min-h-[calc(100dvh-190px)] grid-cols-1 gap-4 lg:grid-cols-[228px_minmax(0,1fr)]">
         <aside className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
           <button
-            onClick={() =>
-              setMessages([
-                {
-                  id: Date.now(),
-                  text: "Xin chào! Tôi có thể giúp gì cho bạn hôm nay?",
-                  sender: "ai",
-                },
-              ])
-            }
-            className="flex items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+            type="button"
+            onClick={startNewConversation}
+            disabled={messages.length === 0 && input === ""}
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#0C66E4] px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PlusCircle size={15} /> Cuộc trò chuyện mới
           </button>
+
           <section>
             <div className="mb-2 flex items-center justify-between px-1">
               <h2 className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                Hội thoại gần đây
-              </h2>
-              <History size={13} className="text-slate-400" />
-            </div>
-            <div className="space-y-1">
-              <button className="w-full rounded-lg bg-blue-50 px-2.5 py-2 text-left text-[10px] font-semibold leading-relaxed text-slate-800">
-                <span className="flex items-start gap-2">
-                  <FileText
-                    size={13}
-                    className="mt-0.5 shrink-0 text-[#0C66E4]"
-                  />
-                  Quy trình giải trình lệch quỹ
-                </span>
-                <span className="ml-5 mt-1 block text-[9px] font-normal text-slate-500">
-                  Hôm nay · 4 phút trước
-                </span>
-              </button>
-              <button className="w-full rounded-lg px-2.5 py-2 text-left text-[10px] leading-relaxed text-slate-600 transition-colors hover:bg-slate-50">
-                <span className="flex items-start gap-2">
-                  <FileText
-                    size={13}
-                    className="mt-0.5 shrink-0 text-slate-400"
-                  />
-                  Quy định nghỉ phép năm
-                </span>
-                <span className="ml-5 mt-1 block text-[9px] text-slate-400">
-                  Hôm qua · 12 câu hỏi
-                </span>
-              </button>
-              <button className="w-full rounded-lg px-2.5 py-2 text-left text-[10px] leading-relaxed text-slate-600 transition-colors hover:bg-slate-50">
-                <span className="flex items-start gap-2">
-                  <FileText
-                    size={13}
-                    className="mt-0.5 shrink-0 text-slate-400"
-                  />
-                  Hướng dẫn tính KPI doanh thu
-                </span>
-                <span className="ml-5 mt-1 block text-[9px] text-slate-400">
-                  14/10/2026 · 8 tài liệu
-                </span>
-              </button>
-              <button className="w-full rounded-lg px-2.5 py-2 text-left text-[10px] leading-relaxed text-slate-600 transition-colors hover:bg-slate-50">
-                <span className="flex items-start gap-2">
-                  <FileText
-                    size={13}
-                    className="mt-0.5 shrink-0 text-slate-400"
-                  />
-                  Chính sách phụ cấp ca tối
-                </span>
-                <span className="ml-5 mt-1 block text-[9px] text-slate-400">
-                  11/10/2026 · Đã lưu
-                </span>
-              </button>
-            </div>
-          </section>
-          <section className="border-t border-slate-100 pt-3">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                Gợi ý tác vụ nhanh
+                Câu hỏi gợi ý
               </h2>
               <Sparkles size={13} className="text-[#0C66E4]" />
             </div>
-            <div className="space-y-2">
-              <button
-                onClick={() =>
-                  setInputMessage("Kiểm tra chênh lệch doanh thu tuần này")
-                }
-                className="w-full rounded-lg border border-blue-100 bg-blue-50/70 p-2.5 text-left transition-colors hover:bg-blue-50"
-              >
-                <span className="flex items-center justify-between text-[10px] font-semibold text-[#0C66E4]">
-                  <span>
-                    <WalletCards size={12} className="mr-1 inline" />
-                    Đối soát tài chính
+            <div className="space-y-1">
+              {SUGGESTED_QUESTIONS.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => setInput(question)}
+                  className="w-full rounded-lg px-2.5 py-2 text-left text-[10px] leading-relaxed text-slate-600 transition-colors hover:bg-blue-50 hover:text-slate-800"
+                >
+                  <span className="flex items-start gap-2">
+                    <FileText size={12} className="mt-0.5 shrink-0 text-slate-400" />
+                    {question}
                   </span>
-                  <ArrowUpRight size={12} />
-                </span>
-                <span className="mt-1.5 block text-[9px] leading-relaxed text-slate-600">
-                  Kiểm tra chênh lệch doanh thu tuần này
-                </span>
-              </button>
-              <button
-                onClick={() =>
-                  setInputMessage("Tóm tắt các đơn xin nghỉ đang chờ duyệt")
-                }
-                className="w-full rounded-lg border border-emerald-100 bg-emerald-50/60 p-2.5 text-left transition-colors hover:bg-emerald-50"
-              >
-                <span className="flex items-center justify-between text-[10px] font-semibold text-emerald-700">
-                  <span>
-                    <BriefcaseBusiness size={12} className="mr-1 inline" />
-                    Đơn từ nhân sự
-                  </span>
-                  <ArrowUpRight size={12} />
-                </span>
-                <span className="mt-1.5 block text-[9px] leading-relaxed text-slate-600">
-                  Tóm tắt các đơn xin nghỉ đang chờ duyệt
-                </span>
-              </button>
-              <button
-                onClick={() =>
-                  setInputMessage("Tóm tắt các chính sách lương và chế độ mới")
-                }
-                className="w-full rounded-lg border border-amber-100 bg-amber-50/50 p-2.5 text-left transition-colors hover:bg-amber-50"
-              >
-                <span className="flex items-center justify-between text-[10px] font-semibold text-amber-800">
-                  <span>
-                    <Activity size={12} className="mr-1 inline" />
-                    Lương & chế độ
-                  </span>
-                  <ArrowUpRight size={12} />
-                </span>
-                <span className="mt-1.5 block text-[9px] leading-relaxed text-slate-600">
-                  Tra cứu quyền lợi và chính sách nội bộ
-                </span>
-              </button>
+                </button>
+              ))}
             </div>
           </section>
-          <div className="mt-auto flex items-center gap-2 rounded-lg bg-[#F3F6FC] px-2.5 py-2 text-[9px] text-slate-500">
-            <ShieldCheck size={14} className="shrink-0 text-emerald-600" />
-            Phiên làm việc bảo mật · Ca 1 (08:00–17:30)
+
+          <section className="border-t border-slate-100 pt-3">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <h2 className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                Phạm vi &amp; giới hạn
+              </h2>
+              <ShieldCheck size={13} className="text-emerald-600" />
+            </div>
+            <ul className="space-y-2 px-1 text-[9px] leading-relaxed text-slate-500">
+              <li>
+                Trợ lý chỉ đọc <b className="text-slate-700">tài liệu công ty</b> và{" "}
+                <b className="text-slate-700">hợp đồng của chính bạn</b> qua tìm kiếm vector
+                trên Supabase.
+              </li>
+              <li>
+                Không tìm thấy tài liệu liên quan thì trợ lý trả lời là chưa có thông tin,
+                thay vì suy đoán.
+              </li>
+              <li>
+                Cuộc trò chuyện <b className="text-slate-700">không được lưu</b> trên máy
+                chủ — tải lại trang là mất.
+              </li>
+            </ul>
+          </section>
+
+          <div className="mt-auto flex items-start gap-2 rounded-lg bg-[#F3F6FC] px-2.5 py-2 text-[9px] leading-relaxed text-slate-500">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-500" />
+            Nội dung do AI sinh có thể sai hoặc thiếu — hãy kiểm tra lại với quản lý trước khi
+            áp dụng.
           </div>
         </aside>
 
@@ -283,123 +286,176 @@ export default function ChatPage() {
                 <Sparkles size={16} />
               </span>
               <div>
-                <h2 className="text-xs font-bold text-slate-900">
-                  Humora Copilot AI
-                </h2>
+                <h2 className="text-xs font-bold text-slate-900">Humora Copilot AI</h2>
                 <p className="mt-0.5 flex items-center gap-1 text-[9px] text-slate-500">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
-                  Sẵn sàng hỗ trợ · Dữ liệu ERP đồng bộ
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isAsking ? "bg-amber-500" : "bg-emerald-500"
+                    }`}
+                  />
+                  {isAsking
+                    ? "Đang tạo embedding, tra cứu tài liệu và gọi Gemini..."
+                    : "Sẵn sàng · trả lời dựa trên tài liệu nội bộ"}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                title="Sao chép hội thoại"
-                className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <Copy size={14} />
-              </button>
-              <button
-                title="Tạo câu trả lời mới"
-                className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <RotateCw size={14} />
-              </button>
-              <button
-                title="Cài đặt trợ lý"
-                className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <Settings2 size={14} />
-              </button>
-            </div>
+            <span className="hidden text-[9px] text-slate-400 sm:block">
+              {messages.filter((message) => message.role === "ai").length} câu trả lời trong
+              phiên này
+            </span>
           </header>
-          <div className="flex-1 space-y-6 overflow-y-auto bg-[#FBFCFF] p-4 sm:p-6">
-            <div className="mx-auto w-fit rounded-full bg-blue-50 px-3 py-1.5 text-[9px] font-medium text-slate-600">
-              <ShieldCheck size={11} className="mr-1 inline text-[#0C66E4]" />
-              Phiên làm việc bảo mật · Ca 1 (08:00–17:30) · Q.1 - TP. Hồ Chí
-              Minh
-            </div>
-            {messages.map((msg) =>
-              msg.sender === "user" ? (
-                <div
-                  key={msg.id}
-                  className="ml-auto flex max-w-[88%] items-start justify-end gap-2.5"
-                >
-                  <div className="rounded-xl rounded-tr-sm bg-[#0C66E4] px-4 py-3 text-xs leading-relaxed text-white shadow-sm">
-                    {msg.text}
-                    <p className="mt-2 text-right text-[9px] text-blue-100">
-                      09:24 AM · ✓✓
-                    </p>
-                  </div>
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[#0C66E4]">
-                    <UserRound size={14} />
-                  </span>
+
+          <div className="flex-1 space-y-4 overflow-y-auto bg-[#FBFCFF] p-3 sm:p-4">
+            {messages.length === 0 ? (
+              <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-white/70 px-5 py-10 text-center">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                  <Bot size={20} />
+                </span>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Xin chào! Mình có thể giúp gì cho bạn hôm nay?
+                  </h3>
+                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                    Hỏi về quy chế, quy trình vận hành ca hoặc nội dung hợp đồng lao động. Câu
+                    trả lời luôn kèm danh sách đoạn tài liệu đã dùng.
+                  </p>
                 </div>
-              ) : (
-                <div key={msg.id} className="flex items-start gap-2.5">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0C66E4] text-white">
-                    <Bot size={15} />
-                  </span>
-                  <article className="max-w-[94%] space-y-3 rounded-xl rounded-tl-sm border border-slate-200/70 bg-white p-4 shadow-sm sm:max-w-[88%]">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#0C66E4]">
-                        <BookOpen size={12} />
-                        {msg.source ?? "Sổ tay Nhân sự Humora"}
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {SUGGESTED_QUESTIONS.map((question) => (
+                    <button
+                      key={question}
+                      type="button"
+                      onClick={() => void ask(question)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-[#0C66E4]"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((message) => {
+                if (message.role === "user") {
+                  return (
+                    <div key={message.id} className="flex justify-end gap-2">
+                      <p className="max-w-[80%] whitespace-pre-line rounded-xl rounded-tr-sm bg-[#0C66E4] px-3 py-2 text-xs leading-relaxed text-white">
+                        {message.text}
+                      </p>
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-[#0C66E4]">
+                        <UserRound size={14} />
                       </span>
-                      {msg.confidence && (
-                        <span className="rounded-md bg-blue-50 px-2 py-1 text-[9px] font-semibold text-slate-600">
-                          Độ tin cậy:{" "}
-                          <b className="text-[#0C66E4]">{msg.confidence}</b>
-                        </span>
+                    </div>
+                  );
+                }
+
+                if (message.role === "error") {
+                  return (
+                    <div key={message.id} className="flex gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
+                        <AlertTriangle size={15} />
+                      </span>
+                      <div className="min-w-0 flex-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+                        <p className="text-xs leading-relaxed text-rose-700">
+                          {message.text}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void ask(message.question)}
+                          disabled={isAsking}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <RotateCw size={12} /> Thử lại
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={message.id} className="flex gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
+                      <Sparkles size={15} />
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="rounded-xl rounded-tl-sm border border-slate-200/80 bg-white p-3 shadow-sm">
+                        <p className="whitespace-pre-line text-xs leading-relaxed text-slate-700">
+                          {message.text}
+                        </p>
+                        <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                          <span className="text-[9px] text-slate-400">
+                            {message.sources.length > 0
+                              ? `${message.sources.length} đoạn tài liệu liên quan`
+                              : "Không tìm thấy đoạn tài liệu nào liên quan"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void copyAnswer(message)}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[9px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-[#0C66E4]"
+                          >
+                            {copiedId === message.id ? (
+                              <>
+                                <Check size={11} className="text-emerald-600" /> Đã sao chép
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={11} /> Sao chép
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {message.sources.length > 0 && (
+                        <details className="rounded-lg border border-slate-200/80 bg-white">
+                          <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[10px] font-semibold text-[#0C66E4] hover:underline">
+                            <span className="flex items-center gap-1.5">
+                              <BookOpen size={12} className="text-[#0C66E4]" />
+                              Trích dẫn tài liệu ({message.sources.length})
+                            </span>
+                            <ChevronDown size={13} className="text-slate-400" />
+                          </summary>
+                          <ul className="divide-y divide-slate-100 border-t border-slate-100">
+                            {message.sources.map((source, index) => (
+                              <li key={`${source.source}-${index}`} className="px-3 py-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold text-slate-700">
+                                    <FileText size={11} className="shrink-0 text-slate-400" />
+                                    <span className="truncate">
+                                      {source.source || "Tài liệu nội bộ"}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold tabular-nums text-[#0C66E4]">
+                                    Độ liên quan {formatSimilarity(source.similarity)}
+                                  </span>
+                                </div>
+                                <p className="mt-1 whitespace-pre-line text-[10px] leading-relaxed text-slate-500">
+                                  {source.content}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
                       )}
                     </div>
-                    <p className="text-[11px] leading-relaxed text-slate-700">
-                      {msg.text}
-                    </p>
-                    {msg.steps && (
-                      <ol className="space-y-2">
-                        {msg.steps.map((step, index) => (
-                          <li
-                            key={step}
-                            className="flex gap-2.5 rounded-lg border border-slate-100 bg-[#FBFCFF] p-3"
-                          >
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[9px] font-bold text-[#0C66E4]">
-                              {index + 1}
-                            </span>
-                            <span className="text-[10px] leading-relaxed text-slate-700">
-                              {step}
-                            </span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[9px] font-medium text-[#0C66E4]">
-                        <FileText size={11} />
-                        {msg.source?.split(" · ")[0] ??
-                          "Tài liệu nội bộ Humora"}
-                      </span>
-                      <span className="text-[9px] text-slate-400">
-                        Trích dẫn · Đã xác minh nội bộ
-                      </span>
-                    </div>
-                  </article>
-                </div>
-              ),
+                  </div>
+                );
+              })
             )}
-            {isLoading && (
+
+            {isAsking && (
               <div className="flex items-center gap-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#0C66E4]">
                   <Sparkles size={15} />
                 </span>
                 <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-[10px] text-slate-500">
                   <Loader2 size={13} className="animate-spin text-[#0C66E4]" />
-                  Đang phân tích dữ liệu...
+                  Đang tra cứu tài liệu nội bộ...
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
+
           <div className="border-t border-slate-100 bg-white p-3 sm:px-4">
             <form
               onSubmit={handleSubmit}
@@ -407,46 +463,38 @@ export default function ChatPage() {
             >
               <textarea
                 rows={2}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Hỏi trợ lý AI về quy chế công ty, thủ tục đơn từ, hoặc tra cứu doanh thu..."
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                maxLength={MAX_QUESTION_LENGTH}
+                placeholder="Hỏi trợ lý AI về quy chế công ty, thủ tục đơn từ, hoặc nội dung hợp đồng..."
                 className="w-full resize-none bg-transparent px-2 py-1.5 text-xs leading-relaxed outline-none placeholder:text-slate-400"
-                disabled={isLoading}
+                disabled={isAsking}
               />
               <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-1">
-                  <label
-                    title="Đính kèm tài liệu"
-                    className="cursor-pointer rounded-md p-1.5 text-slate-500 hover:bg-white hover:text-[#0C66E4]"
-                  >
-                    <Paperclip size={14} />
-                    <input type="file" className="sr-only" />
-                  </label>
-                  <button
-                    type="button"
-                    title="Thu âm"
-                    className="rounded-md p-1.5 text-slate-500 hover:bg-white hover:text-[#0C66E4]"
-                  >
-                    <Mic size={14} />
-                  </button>
-                  <span className="ml-1 text-[9px] text-slate-400">
-                    Enter để gửi · Shift + Enter xuống dòng
-                  </span>
-                </div>
+                <span className="ml-1 text-[9px] text-slate-400">
+                  Enter để gửi · Shift + Enter xuống dòng
+                  {input.length > MAX_QUESTION_LENGTH - 100 &&
+                    ` · ${input.length}/${MAX_QUESTION_LENGTH}`}
+                </span>
                 <button
                   type="submit"
-                  disabled={!inputMessage.trim() || isLoading}
-                  title="Gửi tin nhắn"
+                  disabled={input.trim() === "" || isAsking}
+                  title="Gửi câu hỏi"
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0C66E4] text-white transition-colors hover:bg-blue-700 disabled:bg-slate-300"
                 >
-                  <Send size={14} />
+                  {isAsking ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Send size={14} />
+                  )}
                 </button>
               </div>
             </form>
             <p className="mt-2 text-center text-[9px] text-slate-400">
-              <Check size={10} className="mr-1 inline text-emerald-600" />
-              Humora AI chỉ có thể truy cập dữ liệu nhân sự nội bộ và sổ tay
-              công ty.
+              <ShieldCheck size={10} className="mr-1 inline text-emerald-600" />
+              Câu hỏi được gửi tới /api/chat/ask và chỉ đối chiếu với tài liệu công ty cùng hợp
+              đồng của bạn.
             </p>
           </div>
         </section>

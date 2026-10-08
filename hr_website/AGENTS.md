@@ -219,10 +219,12 @@ that must not live in SQL).
   existing visual language: primary `#0C66E4` with `blue-50` tints, surfaces `#F8F9FF`/`#F3F6FC`,
   `rounded-xl`/`rounded-2xl`, `border-slate-200/80`, small uppercase section labels, `lucide-react` icons.
 - Currency via `new Intl.NumberFormat("vi-VN")`, dates/sizes as `vi-VN`; keep copy in Vietnamese.
-- The navigation screens are Supabase-backed: `/` (Tổng quan), `/revenue`, `/reports` and `/notifications`
-  fetch `/api/*` and only the chat screen plus the header search are still simulated. Wire a page to
-  `/api/*` with real data when a task calls for it, and preserve the existing layout and
-  loading/empty states.
+- Every screen is Supabase-backed: `/` (Tổng quan), `/revenue`, `/reports`, `/notifications` and `/chat`
+  (Trợ lý AI → `POST /api/chat/ask`) all fetch `/api/*`; only the header search still simulates its
+  results. `/chat` is stateless — the endpoint takes one question and answers `{ answer, sources }` — so
+  the conversation lives in component state and the screen must not invent a history, a confidence
+  score or a step list. Wire a page to `/api/*` with real data when a task calls for it, and preserve
+  the existing layout and loading/empty states.
 - Language: code, identifiers and English-style comments stay in English. The Chat AI module
   (`ChatAnswerUseCase`, `GeminiLLMService`, `lib/domain/entities/ChatMessage.ts` and the `@swagger` text of
   `/api/chat/ask`) is documented in Vietnamese — keep that module consistent. Do not mass-translate
