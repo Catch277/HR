@@ -636,16 +636,21 @@ Known inconsistencies to fix when the relevant screen is next touched (do not ma
    `lib/publicPaths.ts` (`isPublicPath(usePathname())`). Moving the nine authenticated screens into an
    `app/(dashboard)/` route group with its own layout is the cleaner long-term shape — a mechanical move,
    worth doing once no feature branch is in flight.
-6. `/branches` has no branch-manager picker although `branches.manager_id` and the API field exist. The
-   missing piece — a staff-list endpoint — now exists (`GET /api/users` without `id`, SCRUM-24, `OWNER`/`CHU`
-   only, with the escalation rules in `UpdateStaffUseCase`), so the picker is a normal next step for that
-   screen. It shows the assignment state as a badge (`Đã gán` / `Chưa gán`) in the meantime.
+6. `/branches` now assigns a branch manager: the picker reads the SCRUM-24 staff directory (`GET /api/users`
+   without `id`, `OWNER`/`MANAGER` only — SCRUM-59 `directory:view` — the staff-list endpoint that was
+   missing before), sends `manager_id` with the branch, and the table shows the name and role when the
+   directory is readable, falling back to the `Đã gán` badge for a role without it. The address field is
+   filled by reverse geocoding (`GET /api/geo/reverse` → Nominatim, the same project as the map tiles)
+   whenever the pin moves, and stays editable by hand.
 7. `/schedules` (SCRUM-30) replaced the old mock `/shifts` screen: the nav label changed from "Xếp ca" to
    "Lịch làm việc" and the route moved to `/schedules`, so `app/shifts/page.tsx` no longer exists. The
-   schedule modal picks a person with `GET /api/search?type=users` (search-as-you-type) instead of a
-   `<select>` of every employee — the same PII call as the branch-manager picker above, now answered by the
-   SCRUM-24 directory endpoint. The `MockShift` helpers mentioned here are gone: SCRUM-22 deleted
-   `lib/mock/adminStore.ts`.
+   schedule modal now picks a person with a combobox over the SCRUM-24 directory (`GET /api/users`): it
+   opens on the first click, filters while the name is typed (diacritics optional, `lib/searchText.ts`), and
+   offers only accounts whose `is_active` is true — the earlier `GET /api/search?type=users` flow needed two
+   characters and a click on "Tìm", and could not tell an employee who had quit from one who still works. Its
+   "Ca làm việc" `<select>` reads the per-organization catalogue, so an unseeded organization gets a hint
+   naming `supabase/sql/SCRUM-58_shift_catalogue.sql` instead of an unexplained empty list. The `MockShift`
+   helpers mentioned here are gone: SCRUM-22 deleted `lib/mock/adminStore.ts`.
 8. `/facilities` and `/schedules` are the first screens with **pills for one dimension + `<select>`s for
    another** (facilities: condition pills + branch/category selects; schedules: status pills + branch
    select). Adopt that split on the next filter row: pills for a short closed set read at a glance, selects
@@ -660,6 +665,68 @@ Known inconsistencies to fix when the relevant screen is next touched (do not ma
     it the screen shows a note and the invite path, which is deliberate: a button that always fails is
     worse than a sentence explaining why.
 
+11. Three roles, not two (SCRUM-59): `OWNER` / `MANAGER` / `EMPLOYEE`, where the middle level is what
+    `CHU` used to mean. The navigation is no longer a fixed list — `components/Sidebar.tsx` filters it
+    through `useProfile().can(…)`, `proxy.ts` sends a deep link the role may not open to
+    `firstAccessiblePath`, and a page hides a control the role may not use instead of letting the click
+    reach a `403`. The visible consequences are deliberate:
+    - a manager (`branch:view` without `branch:manage`) opens `/branches` **read-only** — the header has no
+      "Thêm chi nhánh" and the row's action column reads "Chỉ xem" instead of "Chỉnh sửa";
+    - an employee (`request:view`, `schedule:view`, `attendance:view`) opens `/requests` as "Đơn từ của
+      tôi", `/schedules` without "Xếp ca / Sửa / Xoá", and `/attendance` without "Xác nhận / Sửa giờ / Xử
+      lý khiếu nại" — but keeps "Ghi khiếu nại", which the API accepts for the employee on the record;
+    - `/requests` also *submits*, but never for the owner: "Tạo đơn" (`request:create`) opens a dialog with
+      the đơn type (`REQUEST_TYPES`), the branch, a title and an optional note, and posts it as the caller's
+      own `PENDING` row — the same queue a manager then reviews, which is what closes the loop the screen
+      previously only read from. The owner holds no `request:create` (SCRUM-63): they sit above the approval
+      chain and review every đơn instead of filing one;
+    - `/revenue`, `/reports`, `/employee-status`, `/facilities`, `/staff` and `/organization` are gone from
+      an employee's sidebar entirely, and the capability table in `lib/accessPolicy.ts` is the single place
+      that decides it.
+    Keep the copy in Vietnamese, keep the state pill next to a now-absent button (never leave a blank
+    cell), and remember that the colour tokens (`bg-surface`, `bg-primary`, `text-primary`) are what make
+    these screens work in dark mode.
+
+12. Branch scope and deletion (SCRUM-61). A chi nhánh trưởng (`branches.manager_id`) manages only their
+    branch, and the UI has to *show* that instead of letting the click reach a `403`:
+    - every picker whose value is the target of a write (the revenue branch select, the "Chi nhánh" field
+      of the schedule and facility modals) renders the branches the caller does not head as
+      `disabled` options labelled `— chỉ xem`, and opens on the caller's own branch
+      (`defaultBranchId`) rather than on whichever row the API sorted first;
+    - the **Chi nhánh trưởng** field of the branch modal lists only `OWNER`/`MANAGER` accounts (`isManagerRole`
+      over the SCRUM-24 directory): an employee is not offered, and the API answers `400` if one is sent;
+    - the row actions of `/branches`, `/schedules`, `/attendance`, `/facilities` and `/requests` read
+      **Chỉ xem** for a branch outside the caller's scope, in the same right-aligned cell the buttons
+      would occupy, so the table never shows a blank action column;
+    - **read filters stay usable** (`/attendance`, `/employee-status`, `/requests`, `/schedules`,
+      `/facilities`): SCRUM-60 deliberately lets a manager read the whole organization, and graying a
+      filter would hide data the screen exists to browse. Only the write surfaces narrow;
+    - `/branches` gains a **Xoá** button (owner only) behind `window.confirm`, and the `409` it can answer
+      is rendered verbatim in the page banner — the sentence names how much attendance, schedule,
+      facility and revenue data still points at the branch, which is what the operator has to move or
+      remove first. A branch that still has history is never auto-cascaded: deleting one would take
+      bảng công, ca làm việc and thiết bị with it and orphan `daily_revenue`.
+    - **Nhân viên thuộc một chi nhánh** (SCRUM-63): `/staff` gains a **Chi nhánh** column — one select per
+      row with a "Chưa gán chi nhánh" option, saved by the same **Lưu** button as the role, and an
+      unassigned row carries the amber note "Chưa gán: không thấy ca, bảng công hay gửi được đơn". The
+      search box matches the branch name too, so the owner can review one chi nhánh at a time;
+    - `/requests` shows an employee their branch as a *statement* ("Đơn luôn thuộc chi nhánh bạn làm việc")
+      rather than a picker, hides **Tạo đơn** for an account with no branch, and the empty queue explains
+      it: "Bạn chưa được gán chi nhánh — nhờ chủ sở hữu gán chi nhánh ở trang Quản lý nhân sự để gửi đơn".
+      A branch head no longer sees **Duyệt** / **Từ chối** on their own đơn either: that row reads
+      **Đơn của bạn**, because only the organization's owner may decide it (`ReviewRequestUseCase`) — and
+      the owner keeps the buttons on their own row for exactly the same reason.
+    - **Chủ sở hữu không thuộc một chi nhánh nào** (SCRUM-63): their `/staff` row shows a locked "Không gán
+      chi nhánh" cell instead of a select, and the **Chi nhánh trưởng** picker on `/branches` no longer
+      offers them — only a `MANAGER` heads a branch. A branch whose stored head is the owner (or a legacy
+      employee) is flagged in the table ("… không phụ trách chi nhánh — cần gán quản lý chi nhánh"), and
+      opening its modal explains why the field is empty, so the operator re-assigns a manager;
+    - a **manager's** `/staff` row shows no picker either — just the grey "Phụ trách: …" line read from
+      `branches.manager_id` (or "Chưa phụ trách chi nhánh nào — vẫn xem được toàn tổ chức") — never the
+      amber "Chưa gán: không thấy ca, bảng công hay gửi được đơn" warning, which would be false: a manager
+      reads the whole organization (SCRUM-60). Both that warning and the select are reserved for an
+      `EMPLOYEE`, the only role the branch narrowing actually constrains.
+
 ---
 
 ## Tóm tắt (Tiếng Việt)
@@ -673,5 +740,13 @@ Known inconsistencies to fix when the relevant screen is next touched (do not ma
   `Intl.NumberFormat("vi-VN")` và dùng `tabular-nums`.
 - Nội dung tiếng Việt, mã nguồn/định danh tiếng Anh. Màn hình mới phải khai báo trong
   `components/Sidebar.tsx` (icon lucide + nhãn tiếng Việt) và nối với `/api/*` thay vì dữ liệu mẫu.
+- Phân quyền ba cấp (SCRUM-59): `OWNER` / `MANAGER` / `EMPLOYEE` — bảng năng lực nằm ở
+  `lib/accessPolicy.ts`, `proxy.ts` chặn deep link, `Sidebar` lọc link, trang ẩn nút bằng
+  `useProfile().can(…)`, route handler trả `403` bằng `requireCapability(…)`, còn RLS mới là nơi quyết
+  định dữ liệu. Không tự viết lại danh sách vai trò trong trang: thêm năng lực vào bảng là đủ.
+- Phạm vi chi nhánh (SCRUM-61): trưởng chi nhánh (`branches.manager_id`) chỉ quản lý chi nhánh mình phụ
+  trách. Ở nơi **ghi** dữ liệu, chi nhánh không thuộc quyền bị mờ (`disabled`, nhãn "— chỉ xem") và màn
+  hình mở sẵn đúng chi nhánh của người dùng; ở bảng, dòng ngoài phạm vi hiển thị "Chỉ xem" thay cho nút.
+  Bộ lọc chỉ để **đọc** vẫn dùng được bình thường — đọc không phải là quản lý.
 - Mục 12 là checklist dựng màn hình mới; mục 13 liệt kê các điểm chưa nhất quán (nên sửa khi động vào
   màn hình tương ứng, không sửa hàng loạt).

@@ -2,8 +2,10 @@ import type { Attendance } from "@/lib/domain/entities/Attendance";
 import { AttendanceComplaintForbiddenError } from "@/lib/domain/errors/AttendanceComplaintForbiddenError";
 import { AttendanceNotFoundError } from "@/lib/domain/errors/AttendanceNotFoundError";
 import type { IAttendanceRepository } from "@/lib/domain/repositories/IAttendanceRepository";
+import type { IBranchRepository } from "@/lib/domain/repositories/IBranchRepository";
+import { isManagerRole } from "@/lib/domain/roles";
+import { assertBranchManagedBy } from "@/lib/usecases/branchScope";
 
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
 const MAX_COMPLAINT_LENGTH = 500;
 
 export type RecordAttendanceComplaintInput = {
@@ -14,7 +16,10 @@ export type RecordAttendanceComplaintInput = {
 };
 
 export class RecordAttendanceComplaintUseCase {
-  constructor(private readonly attendanceRepository: IAttendanceRepository) {}
+  constructor(
+    private readonly attendanceRepository: IAttendanceRepository,
+    private readonly branchRepository: IBranchRepository,
+  ) {}
 
   async execute(input: RecordAttendanceComplaintInput): Promise<Attendance> {
     const complaint = input.complaint.trim();
@@ -34,10 +39,19 @@ export class RecordAttendanceComplaintUseCase {
     // The employee on the record may complain about their own timesheet; a manager may raise it
     // for them (the complaint often arrives by phone). Anyone else is refused.
     const isOwner = record.employee_id === input.callerId;
-    const isManager = MANAGER_ROLES.has(input.callerRole.trim().toUpperCase());
+    const isManager = isManagerRole(input.callerRole);
 
     if (!isOwner && !isManager) {
       throw new AttendanceComplaintForbiddenError();
+    }
+
+    // SCRUM-61 narrows the manager path to their own branch. The employee's own complaint is not a
+    // branch action — they manage nothing — so it deliberately skips this check.
+    if (!isOwner) {
+      await assertBranchManagedBy(this.branchRepository, record.branch_id, {
+        userId: input.callerId,
+        role: input.callerRole,
+      });
     }
 
     return this.attendanceRepository.recordComplaint(record.id, complaint);

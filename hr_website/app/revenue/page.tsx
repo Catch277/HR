@@ -12,7 +12,9 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { useProfile } from "@/components/ProfileProvider";
 import { asArray } from "@/lib/asArray";
+import { canManageBranch, defaultBranchId } from "@/lib/domain/branchScope";
 import type { Branch } from "@/lib/domain/entities/Branch";
 import type { RevenueRecord } from "@/lib/domain/entities/RevenueRecord";
 import { getBusinessDay } from "@/lib/usecases/businessDay";
@@ -72,8 +74,19 @@ const inputClassName =
   "w-full rounded-lg border border-slate-200 p-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-500/15";
 
 export default function RevenuePage() {
+  // SCRUM-61: the owner works across every branch, a chi nhánh trưởng only their own. This screen is
+  // per branch, so the picker opens on the branch the caller manages and grays out the others.
+  const { profile, can } = useProfile();
+  const viewerId = profile?.id ?? null;
+  const managesAllBranches = can("branch:manage");
+  const viewer = { userId: viewerId, managesAllBranches };
+
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [branchId, setBranchId] = useState("");
+  const [requestedBranchId, setRequestedBranchId] = useState("");
+  // The branch the screen shows: what the user picked, or — before any pick, and once the role is
+  // known — the branch the caller manages (the owner gets the first one, SCRUM-61). Derived rather
+  // than stored in an effect, so selecting a default never cascades a second render.
+  const branchId = requestedBranchId || defaultBranchId(branches, viewer);
   const [records, setRecords] = useState<RevenueRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -99,7 +112,6 @@ export default function RevenuePage() {
 
         const list = asArray<Branch>(data);
         setBranches(list);
-        setBranchId((current) => current || (list[0]?.id ?? ""));
       })
       .catch(() => undefined);
 
@@ -107,6 +119,18 @@ export default function RevenuePage() {
       cancelled = true;
     };
   }, []);
+
+  // Which branches this caller may actually write: the owner all of them, a manager only their own.
+  const manageableIds = new Set(
+    branches
+      .filter((branch) => canManageBranch(branch, viewer))
+      .map((branch) => branch.id),
+  );
+  // A manager who heads no branch keeps a browsable picker (nothing is disabled) — the buttons below
+  // and the API refuse the write either way.
+  const grayOutForeign = manageableIds.size > 0;
+  const selectedBranch = branches.find((branch) => branch.id === branchId);
+  const canManageSelected = canManageBranch(selectedBranch, viewer);
 
   // The last week of declarations for the selected branch, newest first.
   useEffect(() => {
@@ -326,17 +350,33 @@ export default function RevenuePage() {
           Chi nhánh
           <select
             value={branchId}
-            onChange={(event) => setBranchId(event.target.value)}
+            onChange={(event) => setRequestedBranchId(event.target.value)}
             className={`mt-1 ${inputClassName}`}
           >
             {branches.length === 0 && <option value="">Chưa có chi nhánh</option>}
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
+            {branches.map((branch) => {
+              const manageable = manageableIds.has(branch.id);
+
+              return (
+                <option
+                  key={branch.id}
+                  value={branch.id}
+                  // SCRUM-61: a branch the caller does not head is grayed out — the server refuses the
+                  // write anyway, so the picker should not pretend otherwise.
+                  disabled={grayOutForeign && !manageable}
+                >
+                  {branch.name}
+                  {manageable ? "" : " — chỉ xem"}
+                </option>
+              );
+            })}
           </select>
         </label>
+        {branchId && !canManageSelected && (
+          <p className="text-[11px] font-semibold text-amber-600">
+            Bạn không phụ trách chi nhánh này — chỉ xem được dữ liệu, không mở hay chốt ca được.
+          </p>
+        )}
         <p className="text-[11px] text-slate-500">
           Ngày kinh doanh hôm nay: <b className="text-slate-700">{today}</b>
         </p>
@@ -412,7 +452,7 @@ export default function RevenuePage() {
               <button
                 type="button"
                 onClick={() => void declareOpen()}
-                disabled={busy !== "" || !branchId}
+                disabled={busy !== "" || !branchId || !canManageSelected}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy === "open" ? (
@@ -541,7 +581,7 @@ export default function RevenuePage() {
               <button
                 type="button"
                 onClick={() => void declareClose()}
-                disabled={busy !== ""}
+                disabled={busy !== "" || !canManageSelected}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy === "close" ? (

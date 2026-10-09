@@ -16,6 +16,10 @@ import {
   Users,
 } from "lucide-react";
 
+import { roleLabel } from "@/lib/accessPolicy";
+import { INVITE_ROLES } from "@/lib/domain/entities/OrganizationInvite";
+import { MEMBER_CONFLICT_MARKER } from "@/lib/domain/errors/StaffAccountEmailTakenError";
+
 type OrganizationSummary = {
   organization: { id: string; name: string; created_at: string } | null;
   code: string | null;
@@ -34,20 +38,27 @@ type OrganizationInvite = {
   created_at: string;
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: "Chủ sở hữu",
-  CHU: "Quản lý chi nhánh",
-  EMPLOYEE: "Nhân viên",
-};
-
-const INVITE_ROLE_OPTIONS = ["EMPLOYEE", "CHU"] as const;
+/** The roles an invite may carry (`INVITE_ROLES`, SCRUM-59): a manager or an employee, never an owner. */
+const INVITE_ROLE_OPTIONS = INVITE_ROLES;
 
 /** Same minimum the API and the Edge Function enforce. */
 const MIN_PASSWORD_LENGTH = 8;
 
+/**
+ * The provisioning form's own copy. `409` covers two different conflicts and the fix differs, so
+ * the API forwards the Edge Function's own sentence — `StaffAccountEmailTakenError` documents both
+ * cases and exports the marker below. With the marker the address is already a member and there is
+ * nothing left to create; without it the address merely has its own Supabase Auth login, which is
+ * *not* necessarily visible in `public.users` (a `createUser` that ran while the SCRUM-50 trigger was
+ * missing leaves an auth account with no profile row), hence the copy names where to look.
+ */
 function accountErrorMessage(status: number, serverMessage?: string): string {
   if (status === 409) {
-    return "Email này đã có tài khoản. Hãy dùng \"Thêm vào danh sách\" bên dưới để mời tài khoản đó vào tổ chức.";
+    if (serverMessage?.includes(MEMBER_CONFLICT_MARKER)) {
+      return "Email này đã là thành viên của tổ chức (xem danh sách bên dưới) — không cần tạo lại.";
+    }
+
+    return "Email này đã có tài khoản đăng nhập trong Supabase nhưng chưa vào tổ chức, nên không tạo mới được. Hãy để người này đăng nhập bằng chính tài khoản đó rồi vào tổ chức bằng mã tham gia ở trên — nếu email chưa có trong danh sách bên dưới, hãy bấm \"Thêm vào danh sách\" trước. Nếu họ không đăng nhập được vì lần tạo trước bị bỏ dở, hãy mở Authentication → Users trong Supabase, xóa tài khoản còn sót của email này rồi tạo lại.";
   }
 
   if (status === 429) {
@@ -86,7 +97,7 @@ function actionErrorMessage(status: number, serverMessage?: string): string {
   }
 
   if (status === 403) {
-    return "Chỉ chủ sở hữu (OWNER) hoặc quản lý chi nhánh (CHU) mới thực hiện được thao tác này.";
+    return "Chỉ chủ sở hữu (OWNER) mới thực hiện được thao tác này.";
   }
 
   if (status === 404) {
@@ -120,7 +131,7 @@ function provisioningNote(
 ): string {
   switch (availability?.reason) {
     case "not_allowed":
-      return "Tài khoản của bạn cần thuộc một tổ chức với vai trò chủ sở hữu (OWNER) hoặc quản lý chi nhánh (CHU) mới tạo được tài khoản cho nhân viên.";
+      return "Tài khoản của bạn cần thuộc một tổ chức với vai trò chủ sở hữu (OWNER) mới tạo được tài khoản cho nhân viên.";
     case "unauthenticated":
       return "Edge Function đã từ chối phiên đăng nhập. Kiểm tra lại function `staff-account`: phải bật \"Verify JWT\" và không được tắt xác thực token.";
     case "misconfigured":
@@ -155,6 +166,11 @@ export default function OrganizationPage() {
   const [accountRole, setAccountRole] = useState<string>("EMPLOYEE");
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
+  // SCRUM-52: the provisioning form reports its own outcome. The page-level banners live above the
+  // summary cards, so an error there is off-screen while the owner is looking at this form — which
+  // reads as "nothing happened" (and invites a second click that now answers 409).
+  const [accountError, setAccountError] = useState("");
+  const [accountNote, setAccountNote] = useState("");
   const [provisioning, setProvisioning] =
     useState<StaffProvisioningAvailability | null>(null);
   const [copied, setCopied] = useState(false);
@@ -268,7 +284,7 @@ export default function OrganizationPage() {
     setReloadToken((token) => token + 1);
   }
 
-  /** The code is visible to OWNER/CHU only, so its presence is the manager test on this screen. */
+  /** The code is visible to the OWNER only, so its presence is the owner test on this screen. */
   const canManage = Boolean(summary?.code);
 
   const organizationName = summary?.organization?.name ?? "";
@@ -436,6 +452,8 @@ export default function OrganizationPage() {
     setBusy("account");
     setPageError("");
     setNote("");
+    setAccountError("");
+    setAccountNote("");
 
     try {
       const response = await fetch("/api/organizations/accounts", {
@@ -453,11 +471,11 @@ export default function OrganizationPage() {
         const data = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        setPageError(accountErrorMessage(response.status, data?.error));
+        setAccountError(accountErrorMessage(response.status, data?.error));
         return;
       }
 
-      setNote(
+      setAccountNote(
         `Đã tạo tài khoản cho ${accountEmail.trim()}. Hãy trao email và mật khẩu tạm cho nhân viên — hệ thống không lưu lại mật khẩu này.`,
       );
       setAccountEmail("");
@@ -467,7 +485,7 @@ export default function OrganizationPage() {
       setAccountPasswordVisible(false);
       refresh();
     } catch {
-      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+      setAccountError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
     } finally {
       setBusy("");
     }
@@ -719,7 +737,7 @@ export default function OrganizationPage() {
                       >
                         {INVITE_ROLE_OPTIONS.map((role) => (
                           <option key={role} value={role}>
-                            {ROLE_LABELS[role]}
+                            {roleLabel(role)}
                           </option>
                         ))}
                       </select>
@@ -746,6 +764,23 @@ export default function OrganizationPage() {
                       </span>
                     </label>
                   </div>
+
+                  {accountError && (
+                    <div
+                      role="alert"
+                      className="mt-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+                    >
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                      <span>{accountError}</span>
+                    </div>
+                  )}
+
+                  {accountNote && (
+                    <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                      <Check size={16} className="mt-0.5 shrink-0" />
+                      <span>{accountNote}</span>
+                    </div>
+                  )}
 
                   <button
                     type="button"
@@ -827,7 +862,7 @@ export default function OrganizationPage() {
                     >
                       {INVITE_ROLE_OPTIONS.map((role) => (
                         <option key={role} value={role}>
-                          {ROLE_LABELS[role]}
+                          {roleLabel(role)}
                         </option>
                       ))}
                     </select>
@@ -877,7 +912,7 @@ export default function OrganizationPage() {
                             {invite.full_name ?? "—"}
                           </td>
                           <td className="px-4 py-3 text-xs text-slate-600">
-                            {ROLE_LABELS[invite.role] ?? invite.role}
+                            {roleLabel(invite.role)}
                           </td>
                           <td className="px-4 py-3">
                             <span

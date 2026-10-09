@@ -14,8 +14,13 @@ import {
   UserX,
 } from "lucide-react";
 
-import type { StaffRole } from "@/lib/domain/entities/StaffMember";
-import { STAFF_ROLES } from "@/lib/domain/entities/StaffMember";
+import { roleLabel } from "@/lib/accessPolicy";
+import {
+  APP_ROLES,
+  isBranchHeadRole,
+  isOwnerRole,
+  type AppRole,
+} from "@/lib/domain/roles";
 
 type StaffMemberRow = {
   id: string;
@@ -23,30 +28,60 @@ type StaffMemberRow = {
   role: string;
   is_active: boolean;
   created_at: string;
+  /** SCRUM-63: the branch the account belongs to; `null` means "chưa gán chi nhánh". */
+  branch_id: string | null;
 };
 
 type StaffDraft = {
-  role: StaffRole;
+  role: AppRole;
   isActive: boolean;
+  /** `""` is the "Chưa gán chi nhánh" option; it travels to the API as `null` (SCRUM-63). */
+  branchId: string;
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: "Chủ sở hữu",
-  CHU: "Quản lý chi nhánh",
-  EMPLOYEE: "Nhân viên",
-};
+/**
+ * The branch picker's options (SCRUM-63): `id` + `name` for the select, `manager_id` for the
+ * "Phụ trách" note a manager's row shows.
+ */
+type Branch = { id: string; name: string; manager_id: string | null };
 
-const ROLE_SET: ReadonlySet<string> = new Set(STAFF_ROLES);
+const ROLE_SET: ReadonlySet<string> = new Set(APP_ROLES);
 
-/** Mirrors the API contract: the role sent back must be one of the three known values. */
-function toDraftRole(role: string): StaffRole {
-  const upper = role.trim().toUpperCase();
-
-  return (ROLE_SET.has(upper) ? upper : "EMPLOYEE") as StaffRole;
+/**
+ * Only an `EMPLOYEE` is attached to a branch (SCRUM-63). The owner stands above every branch, and a
+ * manager's scope comes from `branches.manager_id` — `users.branch_id` is informational for them and
+ * the screen deliberately offers no picker (SCRUM-60 lets them read the whole organization anyway).
+ */
+function holdsBranch(role: string): boolean {
+  return role === "EMPLOYEE";
 }
 
-function roleLabel(role: string): string {
-  return ROLE_LABELS[role.trim().toUpperCase()] ?? role;
+/** Mirrors the API contract: the role sent back must be one of the three known values. */
+function toDraftRole(role: string): AppRole {
+  const upper = role.trim().toUpperCase();
+
+  return (ROLE_SET.has(upper) ? upper : "EMPLOYEE") as AppRole;
+}
+
+/**
+ * One place turns a row into a draft, so the three call sites cannot drift (SCRUM-63).
+ *
+ * `branchId` always reads "" for a role the screen does not attach to a branch, which keeps a legacy
+ * `branch_id` out of the payload on the next save (see `save`).
+ */
+function toDraft(member: StaffMemberRow): StaffDraft {
+  return {
+    role: toDraftRole(member.role),
+    isActive: member.is_active,
+    branchId: holdsBranch(toDraftRole(member.role))
+      ? (member.branch_id ?? "")
+      : "",
+  };
+}
+
+/** The value `isDirty` compares a draft against, mirroring `toDraft`. */
+function storedBranchId(member: StaffMemberRow): string {
+  return holdsBranch(toDraftRole(member.role)) ? (member.branch_id ?? "") : "";
 }
 
 function formatDateTime(value: string): string {
@@ -70,7 +105,7 @@ function actionErrorMessage(status: number, data: { error?: string } | null): st
   }
 
   if (status === 403) {
-    return "Chỉ chủ sở hữu (OWNER) hoặc quản lý chi nhánh (CHU) mới quản lý được nhân sự.";
+    return "Chỉ chủ sở hữu (OWNER) mới quản lý được nhân sự.";
   }
 
   if (status === 404) {
@@ -82,6 +117,7 @@ function actionErrorMessage(status: number, data: { error?: string } | null): st
 
 export default function StaffPage() {
   const [members, setMembers] = useState<StaffMemberRow[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [drafts, setDrafts] = useState<Record<string, StaffDraft>>({});
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -94,20 +130,33 @@ export default function StaffPage() {
 
     async function load(): Promise<{
       members: StaffMemberRow[];
+      branches: Branch[];
       error: string | null;
     }> {
-      const response = await fetch("/api/users", { cache: "no-store" });
+      // The branch picker needs the list, and both reads belong to the owner (`staff:manage` and
+      // `branch:view`), so they load together (SCRUM-63).
+      const [usersResponse, branchesResponse] = await Promise.all([
+        fetch("/api/users", { cache: "no-store" }),
+        fetch("/api/branches", { cache: "no-store" }),
+      ]);
 
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
+      if (!usersResponse.ok) {
+        const data = (await usersResponse.json().catch(() => null)) as {
           error?: string;
         } | null;
 
-        return { members: [], error: actionErrorMessage(response.status, data) };
+        return {
+          members: [],
+          branches: [],
+          error: actionErrorMessage(usersResponse.status, data),
+        };
       }
 
       return {
-        members: (await response.json()) as StaffMemberRow[],
+        members: (await usersResponse.json()) as StaffMemberRow[],
+        branches: branchesResponse.ok
+          ? ((await branchesResponse.json()) as Branch[])
+          : [],
         error: null,
       };
     }
@@ -119,12 +168,10 @@ export default function StaffPage() {
         }
 
         setMembers(result.members);
+        setBranches(result.branches);
         setDrafts(
           Object.fromEntries(
-            result.members.map((member) => [
-              member.id,
-              { role: toDraftRole(member.role), isActive: member.is_active },
-            ]),
+            result.members.map((member) => [member.id, toDraft(member)]),
           ),
         );
         setPageError(result.error ?? "");
@@ -136,6 +183,7 @@ export default function StaffPage() {
         }
 
         setMembers([]);
+        setBranches([]);
         setDrafts({});
         setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
         setLoading(false);
@@ -152,6 +200,34 @@ export default function StaffPage() {
     setReloadToken((token) => token + 1);
   }
 
+  // Searching by branch is what the owner actually does once every account has one (SCRUM-63).
+  const branchNames = useMemo(() => {
+    const map = new Map<string, string>();
+    branches.forEach((branch) => map.set(branch.id, branch.name));
+
+    return map;
+  }, [branches]);
+
+  // The branches a manager *heads* come from `branches.manager_id` — for them that is the scope that
+  // matters, not `users.branch_id` (a manager reads the whole organization either way). One manager
+  // may head several branches, so the map holds a list rather than a single name.
+  const headedBranchNames = useMemo(() => {
+    const map = new Map<string, string[]>();
+
+    branches.forEach((branch) => {
+      if (!branch.manager_id) {
+        return;
+      }
+
+      map.set(branch.manager_id, [
+        ...(map.get(branch.manager_id) ?? []),
+        branch.name,
+      ]);
+    });
+
+    return map;
+  }, [branches]);
+
   const filteredMembers = useMemo(() => {
     const keyword = query.trim().toLowerCase();
 
@@ -160,15 +236,23 @@ export default function StaffPage() {
     }
 
     return members.filter((member) =>
-      `${member.full_name} ${roleLabel(member.role)}`.toLowerCase().includes(keyword),
+      `${
+        member.full_name
+      } ${roleLabel(member.role)} ${branchNames.get(member.branch_id ?? "") ?? ""}`
+        .toLowerCase()
+        .includes(keyword),
     );
-  }, [members, query]);
+  }, [members, query, branchNames]);
 
   const activeCount = members.filter((member) => member.is_active).length;
 
   function updateDraft(id: string, patch: Partial<StaffDraft>) {
     setDrafts((value) => {
-      const current = value[id] ?? { role: "EMPLOYEE" as StaffRole, isActive: true };
+      const current = value[id] ?? {
+        role: "EMPLOYEE" as AppRole,
+        isActive: true,
+        branchId: "",
+      };
 
       return { ...value, [id]: { ...current, ...patch } };
     });
@@ -176,19 +260,16 @@ export default function StaffPage() {
 
   /** A row shows a draft until it is saved, so the badge reflects what will be stored. */
   function draftOf(member: StaffMemberRow): StaffDraft {
-    return (
-      drafts[member.id] ?? {
-        role: toDraftRole(member.role),
-        isActive: member.is_active,
-      }
-    );
+    return drafts[member.id] ?? toDraft(member);
   }
 
   function isDirty(member: StaffMemberRow): boolean {
     const draft = draftOf(member);
 
     return (
-      draft.role !== toDraftRole(member.role) || draft.isActive !== member.is_active
+      draft.role !== toDraftRole(member.role) ||
+      draft.isActive !== member.is_active ||
+      draft.branchId !== storedBranchId(member)
     );
   }
 
@@ -198,10 +279,23 @@ export default function StaffPage() {
     setPageError("");
 
     try {
+      const payload: Record<string, unknown> = {
+        role: draft.role,
+        is_active: draft.isActive,
+      };
+
+      // Only an employee is attached to a branch (SCRUM-63): for the other roles the column is a
+      // statement, so `branch_id` is **omitted** and the API keeps whatever the row already has —
+      // the screen must not clear a value it does not show. `""` is the "Chưa gán chi nhánh" option
+      // and travels as `null`, which the API reads as "tháo gán".
+      if (holdsBranch(draft.role)) {
+        payload.branch_id = draft.branchId || null;
+      }
+
       const response = await fetch(`/api/users/${member.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: draft.role, is_active: draft.isActive }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -218,10 +312,7 @@ export default function StaffPage() {
       );
       setDrafts((value) => ({
         ...value,
-        [updated.id]: {
-          role: toDraftRole(updated.role),
-          isActive: updated.is_active,
-        },
+        [updated.id]: toDraft(updated),
       }));
     } catch {
       setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
@@ -234,11 +325,12 @@ export default function StaffPage() {
     <div className="space-y-6">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-          Nhân sự / SCRUM-24
+          Nhân sự / SCRUM-24 · SCRUM-63
         </p>
         <h1 className="mt-1 text-2xl font-bold text-slate-900">Quản lý nhân sự</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Cấp vai trò và cho nhân viên nghỉ việc — thay cho thao tác SQL thủ công trước đây.
+          Cấp vai trò, gán chi nhánh và cho nhân viên nghỉ việc — thay cho thao tác SQL thủ công
+          trước đây.
         </p>
       </div>
 
@@ -301,6 +393,13 @@ export default function StaffPage() {
             duyệt đơn. Chỉ <span className="font-medium">chủ sở hữu</span> mới cấp hoặc thu
             hồi vai trò chủ sở hữu, và không ai tự sửa được vai trò của mình.
           </p>
+          <p className="mt-1">
+            <span className="font-medium">Gán chi nhánh làm việc</span> ở cột &quot;Chi nhánh làm
+            việc&quot;: chỉ nhân viên mới được gán chi nhánh, và khi chưa gán thì họ không thấy lịch
+            làm việc, bảng công hay gửi được đơn nào. Quản lý làm việc theo chi nhánh mình phụ trách
+            (gán ở trang Quản lý chi nhánh) nên cột này chỉ ghi lại chi nhánh đó, còn chủ sở hữu đứng
+            trên mọi chi nhánh nên không gán vào chi nhánh nào.
+          </p>
         </div>
       </div>
 
@@ -318,7 +417,7 @@ export default function StaffPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm theo tên hoặc vai trò"
+              placeholder="Tìm theo tên, vai trò hoặc chi nhánh"
               className="w-full text-sm outline-none placeholder:text-slate-400"
             />
           </div>
@@ -344,11 +443,12 @@ export default function StaffPage() {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[1080px] text-left text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Nhân viên</th>
                   <th className="px-4 py-3 font-semibold">Vai trò</th>
+                  <th className="px-4 py-3 font-semibold">Chi nhánh làm việc</th>
                   <th className="px-4 py-3 font-semibold">Trạng thái</th>
                   <th className="px-4 py-3 font-semibold">Ngày tạo</th>
                   <th className="px-4 py-3 font-semibold">Hành động</th>
@@ -358,6 +458,8 @@ export default function StaffPage() {
                 {filteredMembers.map((member) => {
                   const draft = draftOf(member);
                   const dirty = isDirty(member);
+                  // SCRUM-63: a manager may head more than one branch, so the cell lists them all.
+                  const headedBranches = headedBranchNames.get(member.id) ?? [];
 
                   return (
                     <tr key={member.id} className="align-top">
@@ -374,17 +476,65 @@ export default function StaffPage() {
                           value={draft.role}
                           onChange={(event) =>
                             updateDraft(member.id, {
-                              role: event.target.value as StaffRole,
+                              role: event.target.value as AppRole,
                             })
                           }
                           className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-blue-500"
                         >
-                          {STAFF_ROLES.map((role) => (
+                          {APP_ROLES.map((role) => (
                             <option key={role} value={role}>
-                              {ROLE_LABELS[role]}
+                              {roleLabel(role)}
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        {isOwnerRole(member.role) ? (
+                          // SCRUM-63: the owner stands above every branch, so there is nothing to
+                          // assign — an empty select here would read as a missing setting.
+                          <span className="block text-[11px] text-slate-400">
+                            Không gán chi nhánh
+                            <span className="mt-1 block max-w-44 text-[10px]">
+                              Chủ sở hữu đứng trên mọi chi nhánh
+                            </span>
+                          </span>
+                        ) : isBranchHeadRole(member.role) ? (
+                          // A manager is not attached to a branch either: what matters for them is the
+                          // chi nhánh they head, and they read the whole organization (SCRUM-60) — so the
+                          // column is a statement, never a picker.
+                          <span className="block max-w-56 text-[11px] text-slate-400">
+                            {headedBranches.length > 0
+                              ? `Phụ trách: ${headedBranches.join(", ")}`
+                              : "Chưa phụ trách chi nhánh nào — vẫn xem được toàn tổ chức"}
+                          </span>
+                        ) : (
+                          <>
+                            <select
+                              aria-label={`Chi nhánh làm việc của ${
+                                member.full_name || "tài khoản"
+                              }`}
+                              value={draft.branchId}
+                              onChange={(event) =>
+                                updateDraft(member.id, {
+                                  branchId: event.target.value,
+                                })
+                              }
+                              className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                            >
+                              <option value="">Chưa gán chi nhánh</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.name}
+                                </option>
+                              ))}
+                            </select>
+                            {!draft.branchId && (
+                              <p className="mt-1 max-w-40 text-[10px] text-amber-600">
+                                Chưa gán: không thấy ca, bảng công hay gửi được đơn
+                              </p>
+                            )}
+                          </>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span

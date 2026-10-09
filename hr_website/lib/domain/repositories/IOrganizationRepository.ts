@@ -5,7 +5,8 @@ export interface IOrganizationRepository {
   findCurrent(): Promise<Organization | null>;
   /**
    * The join code of the caller's organization, or null when the caller may not see it — RLS gives
-   * it to OWNER/CHU only, so "not a manager" and "no code yet" are the same answer here.
+   * it to the organization's OWNER only (SCRUM-59), so "not the owner" and "no code yet" are the same
+   * answer here.
    */
   findJoinCode(): Promise<string | null>;
   countMembers(): Promise<number>;

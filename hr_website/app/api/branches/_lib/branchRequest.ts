@@ -6,6 +6,8 @@
  * layer instead of leaking into the use cases.
  */
 
+import { isInsideVietnam } from "@/lib/geo/vietnam";
+
 export const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -89,6 +91,19 @@ export function parseBranchRequest(payload: unknown): BranchRequestResult {
   // the same rule the `branches_geofence_coordinates_check` constraint enforces.
   if ((latitude.value === null) !== (longitude.value === null)) {
     return { ok: false, error: "latitude and longitude must be provided together." };
+  }
+
+  // The attendance geofence is only meaningful inside the country the app operates in, and the
+  // outline test lives in lib/geo/vietnam.ts so the picker refuses the same points client-side. The
+  // database repeats just the bounding box (SCRUM-57), which is why this check earns its keep.
+  if (latitude.value !== null && longitude.value !== null) {
+    if (!isInsideVietnam(latitude.value, longitude.value)) {
+      return {
+        ok: false,
+        error:
+          "Coordinates must be inside Vietnamese territory (mainland or an island with a branch).",
+      };
+    }
   }
 
   const rawRadius = body.attendance_radius ?? DEFAULT_ATTENDANCE_RADIUS;

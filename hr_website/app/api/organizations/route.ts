@@ -66,7 +66,7 @@ import { NextResponse } from "next/server";
 import { SupabaseOrganizationRepository } from "@/lib/infrastructure/repositories/SupabaseOrganizationRepository";
 import { CreateOrganizationUseCase } from "@/lib/usecases/CreateOrganizationUseCase";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCaller } from "@/app/api/_lib/requireCaller";
 
 export async function POST(request: Request) {
   let body: { name?: unknown };

@@ -6,8 +6,8 @@
  *     description: |
  *       SCRUM-51: the organization of the signed-in account plus its member and pending-invite
  *       counts. `organization` is null while the caller has not created or joined one, which is
- *       what the onboarding gate uses. `code` is null unless the caller is OWNER/CHU — the join
- *       code is hidden by RLS, not by a check here.
+ *       what the onboarding gate uses. `code` is null unless the caller is the organization's OWNER
+ *       (SCRUM-59) — the join code is hidden by RLS, not by a check here.
  *     tags:
  *       - Organizations
  *     responses:
@@ -38,9 +38,10 @@
  *   patch:
  *     summary: Rename the organization or rotate its join code
  *     description: |
- *       SCRUM-51: `name` renames the organization (OWNER/CHU) and `rotate_code: true` replaces the
- *       join code (OWNER only) — the old code stops working immediately, which is how an owner cuts
- *       off a code that leaked without touching the invites of the people they meant to add.
+ *       SCRUM-51 + SCRUM-59: both `name` (rename) and `rotate_code: true` are owner actions
+ *       (`organization:manage`), so a `MANAGER` gets `403`. The old code stops working immediately,
+ *       which is how an owner cuts off a code that leaked without touching the invites of the
+ *       people they meant to add.
  *     tags:
  *       - Organizations
  *     requestBody:
@@ -75,7 +76,7 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
- *         description: The account has no profile, is not a manager, or is not the OWNER for a rotation.
+ *         description: The account has no profile, or the caller is not the organization's OWNER (SCRUM-59).
  *         content:
  *           application/json:
  *             schema:
@@ -101,7 +102,7 @@ import { GetCurrentOrganizationUseCase } from "@/lib/usecases/GetCurrentOrganiza
 import { RenameOrganizationUseCase } from "@/lib/usecases/RenameOrganizationUseCase";
 import { RotateOrganizationCodeUseCase } from "@/lib/usecases/RotateOrganizationCodeUseCase";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCaller, requireCapability } from "@/app/api/_lib/requireCaller";
 
 export async function GET() {
   const caller = await requireCaller();
@@ -150,7 +151,10 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const caller = await requireCaller();
+  // Renaming the organization or rotating its join code is the owner's own decision (SCRUM-59); the
+  // use cases repeat the rule for the caller they are given and SCRUM-51's policies repeat it in the
+  // database.
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;

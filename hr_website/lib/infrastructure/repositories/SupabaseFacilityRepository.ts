@@ -69,6 +69,22 @@ export class SupabaseFacilityRepository implements IFacilityRepository {
     return ((data ?? []) as FacilityRow[]).map(toFacility);
   }
 
+  async findById(id: string): Promise<Facility | null> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("facilities")
+      .select(FACILITY_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Unable to load the facility: ${error.message}`);
+    }
+
+    // RLS scopes the read (SCRUM-60: managers of the organization), so a hidden row is "no facility".
+    return data ? toFacility(data as FacilityRow) : null;
+  }
+
   async create(input: CreateFacilityInput): Promise<Facility> {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase

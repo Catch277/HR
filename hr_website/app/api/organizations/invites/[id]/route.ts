@@ -6,7 +6,7 @@
  *     description: |
  *       SCRUM-51: withdraws an invite that has not been claimed, so that address can no longer
  *       spend the join code. Removing somebody who already joined is a staff action instead
- *       (`is_active = false` on `/staff`). OWNER/CHU only; another organization's invite is a `404`.
+ *       (`is_active = false` on `/staff`). OWNER only (SCRUM-59); another organization's invite is a `404`.
  *     tags:
  *       - Organizations
  *     parameters:
@@ -63,7 +63,7 @@ import { NextResponse } from "next/server";
 import { SupabaseOrganizationInviteRepository } from "@/lib/infrastructure/repositories/SupabaseOrganizationInviteRepository";
 import { RevokeOrganizationInviteUseCase } from "@/lib/usecases/RevokeOrganizationInviteUseCase";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -81,7 +81,7 @@ export async function DELETE(
     );
   }
 
-  const caller = await requireCaller();
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;

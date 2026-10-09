@@ -16,18 +16,34 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useProfile } from "@/components/ProfileProvider";
+import { roleLabel } from "@/lib/accessPolicy";
+import { canManageBranch, defaultBranchId } from "@/lib/domain/branchScope";
 import {
   SHIFT_ASSIGNMENT_STATUSES,
   type Shift,
   type ShiftAssignment,
   type ShiftAssignmentStatus,
 } from "@/lib/domain/entities/Shift";
+import { normalizeForSearch } from "@/lib/searchText";
 
-type Branch = { id: string; name: string };
+// SCRUM-61 needs `manager_id`: it is what says whether the caller heads the branch.
+type Branch = { id: string; name: string; manager_id: string | null };
 
-type EmployeeResult = { id: string; full_name: string; role: string };
+/**
+ * A row of the staff directory (`GET /api/users`, SCRUM-24). The endpoint is a manager view, which is
+ * the PII decision for this screen: the picker browses that directory once and filters locally, so a
+ * name is no longer typed into a search box per keystroke. `is_active` is what keeps the people who
+ * have quit out of the schedule (SCRUM-24 sets it to false when an account leaves).
+ */
+type StaffOption = {
+  id: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+};
 
 type ScheduleForm = {
   employeeId: string;
@@ -73,6 +89,9 @@ const WEEKDAYS = [
 ];
 
 const ALL = "all";
+
+/** The picker renders at most this many rows; typing narrows the list further. */
+const EMPLOYEE_RESULT_LIMIT = 50;
 
 const inputClassName =
   "mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500";
@@ -138,6 +157,12 @@ function initials(fullName: string | undefined): string {
 }
 
 export default function SchedulesPage() {
+  // SCRUM-59/61: every role may open the schedule (`schedule:view`), but writing one is a manager
+  // action — and only for the branch they head. An employee sees the plan without the controls, and a
+  // manager sees another branch's shifts without "Sửa / Xoá".
+  const { profile, can } = useProfile();
+  const viewerId = profile?.id ?? null;
+  const managesAllBranches = can("branch:manage");
   const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -158,11 +183,19 @@ export default function SchedulesPage() {
   });
   const [employeeName, setEmployeeName] = useState("");
   const [employeeQuery, setEmployeeQuery] = useState("");
-  const [employeeResults, setEmployeeResults] = useState<EmployeeResult[]>([]);
-  const [searchingEmployees, setSearchingEmployees] = useState(false);
+  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+  const employeePickerRef = useRef<HTMLDivElement>(null);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+
+  // The employee picker browses the SCRUM-24 staff directory, so it needs `is_active` — the quick
+  // search endpoint does not carry it. A 403 is a normal outcome (SCRUM-59 `directory:view`), and in
+  // that case the picker explains itself instead of showing an error banner: only a manager can write
+  // a shift anyway, which the RLS policies on `shift_assignments` enforce.
+  const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [staffAllowed, setStaffAllowed] = useState(false);
 
   // Bumping the token re-runs the effect below; keeping the fetch inside the effect (instead
   // of a callback the effect calls) avoids setting state synchronously during render.
@@ -197,13 +230,17 @@ export default function SchedulesPage() {
         };
       }
 
+      // A failed catalogue request used to look like "this organization has no shift templates"; say
+      // which it is, because the picker would otherwise be silently empty.
+      const shiftsFailed = !shiftsResponse.ok;
+
       return {
         assignments: (await scheduleResponse.json()) as ShiftAssignment[],
-        shifts: shiftsResponse.ok ? ((await shiftsResponse.json()) as Shift[]) : [],
+        shifts: shiftsFailed ? [] : ((await shiftsResponse.json()) as Shift[]),
         branches: branchesResponse.ok
           ? ((await branchesResponse.json()) as Branch[])
           : [],
-        error: null,
+        error: shiftsFailed ? "Không thể tải danh mục ca làm việc." : null,
       };
     }
 
@@ -234,6 +271,59 @@ export default function SchedulesPage() {
     };
   }, [weekStart, weekEnd, reloadToken]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/users", { cache: "no-store" })
+      .then(async (response): Promise<StaffOption[]> => {
+        if (!response.ok) {
+          // 403 for a role without the directory: the picker says so, the page stays usable.
+          return [];
+        }
+
+        return (await response.json()) as StaffOption[];
+      })
+      .then((directory) => {
+        if (cancelled) {
+          return;
+        }
+
+        setStaff(directory);
+        setStaffAllowed(directory.length > 0);
+        setStaffLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setStaff([]);
+        setStaffAllowed(false);
+        setStaffLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Clicking outside closes the picker. A blur handler is deliberately avoided: it also fires while
+  // the pointer is on its way to a row inside the list.
+  useEffect(() => {
+    function onMouseDown(event: MouseEvent) {
+      if (
+        employeePickerRef.current &&
+        !employeePickerRef.current.contains(event.target as Node)
+      ) {
+        setEmployeeDropdownOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onMouseDown);
+
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
   function refresh() {
     setLoading(true);
     setPageError("");
@@ -246,6 +336,32 @@ export default function SchedulesPage() {
 
     return map;
   }, [branches]);
+
+  /**
+   * Only the people who still work here can be scheduled: a deactivated account is "đã nghỉ" and has
+   * no business in a new shift. Somebody deactivated *after* being scheduled keeps their row — and the
+   * marker below — because that assignment still has to be editable.
+   */
+  const assignableStaff = useMemo(
+    () => staff.filter((member) => member.is_active),
+    [staff],
+  );
+
+  const employeeMatches = useMemo(() => {
+    const keyword = normalizeForSearch(employeeQuery.trim());
+
+    if (!keyword) {
+      return assignableStaff;
+    }
+
+    return assignableStaff.filter((member) =>
+      normalizeForSearch(member.full_name).includes(keyword),
+    );
+  }, [assignableStaff, employeeQuery]);
+
+  /** null while the directory is unknown (loading, or not readable by this account). */
+  const selectedEmployeeIsActive =
+    staff.find((member) => member.id === form.employeeId)?.is_active ?? null;
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -313,8 +429,25 @@ export default function SchedulesPage() {
   ).size;
   const isCurrentWeek = weekStart === startOfWeek(todayInBangkok());
 
+  // SCRUM-61: the branches this caller may write into (the owner all, a manager only their own).
+  const manageableIds = new Set(
+    branches
+      .filter((branch) =>
+        canManageBranch(branch, { userId: viewerId, managesAllBranches }),
+      )
+      .map((branch) => branch.id),
+  );
+
   function openCreate(workDate: string) {
-    const branchId = branchFilter !== ALL ? branchFilter : (branches[0]?.id ?? "");
+    // A manager schedules into their own branch by default — not into whichever row sorted first, and
+    // never into a branch they do not head, even when the read filter happens to point there (SCRUM-61).
+    const preferred =
+      branchFilter !== ALL && manageableIds.has(branchFilter)
+        ? branchFilter
+        : defaultBranchId(branches, { userId: viewerId, managesAllBranches });
+    // A manager who heads no branch gets no default at all: the save button below stays disabled instead
+    // of offering a form the API would refuse with `403`.
+    const branchId = manageableIds.has(preferred) ? preferred : "";
 
     setForm({
       employeeId: "",
@@ -326,7 +459,7 @@ export default function SchedulesPage() {
     });
     setEmployeeName("");
     setEmployeeQuery("");
-    setEmployeeResults([]);
+    setEmployeeDropdownOpen(false);
     setFormError("");
     setModal({ mode: "create", workDate });
   }
@@ -342,53 +475,24 @@ export default function SchedulesPage() {
     });
     setEmployeeName(assignment.employee?.full_name ?? "Nhân viên đã xoá");
     setEmployeeQuery("");
-    setEmployeeResults([]);
+    setEmployeeDropdownOpen(false);
     setFormError("");
     setModal({ mode: "edit", assignment });
   }
 
   function closeModal() {
     setModal(null);
+    setEmployeeDropdownOpen(false);
     setFormError("");
   }
 
-  /**
-   * The staff list is a PII decision (`AGENTS.md`), so the picker searches the existing
-   * `GET /api/search?type=users` endpoint instead of adding a staff-list endpoint.
-   */
-  async function searchEmployees() {
-    const keyword = employeeQuery.trim();
-
-    if (keyword.length < 2) {
-      setFormError("Nhập ít nhất 2 ký tự để tìm nhân viên.");
-      return;
-    }
-
-    setSearchingEmployees(true);
+  /** Picks one directory row and closes the list; the name is kept for the collapsed state. */
+  function selectEmployee(member: StaffOption) {
+    setForm((value) => ({ ...value, employeeId: member.id }));
+    setEmployeeName(member.full_name);
+    setEmployeeQuery("");
+    setEmployeeDropdownOpen(false);
     setFormError("");
-
-    try {
-      const response = await fetch(
-        `/api/search?q=${encodeURIComponent(keyword)}&type=users`,
-        { cache: "no-store" },
-      );
-
-      if (!response.ok) {
-        setFormError("Không thể tìm nhân viên. Vui lòng thử lại.");
-        return;
-      }
-
-      const data = (await response.json()) as { users?: EmployeeResult[] };
-      setEmployeeResults(data.users ?? []);
-
-      if ((data.users ?? []).length === 0) {
-        setFormError("Không tìm thấy nhân viên phù hợp.");
-      }
-    } catch {
-      setFormError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
-    } finally {
-      setSearchingEmployees(false);
-    }
   }
 
   async function submit() {
@@ -559,13 +663,15 @@ export default function SchedulesPage() {
               Về tuần này
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => openCreate(isCurrentWeek ? todayInBangkok() : weekStart)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
-          >
-            <UserPlus size={14} /> Xếp ca
-          </button>
+          {can("schedule:manage") && (
+            <button
+              type="button"
+              onClick={() => openCreate(isCurrentWeek ? todayInBangkok() : weekStart)}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
+            >
+              <UserPlus size={14} /> Xếp ca
+            </button>
+          )}
         </div>
       </div>
 
@@ -730,13 +836,15 @@ export default function SchedulesPage() {
                     <span className="text-[10px] text-slate-400">
                       {dayAssignments.length} ca
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => openCreate(day)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-surface px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      <Plus size={12} /> Thêm ca
-                    </button>
+                    {can("schedule:manage") && (
+                      <button
+                        type="button"
+                        onClick={() => openCreate(day)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-surface px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Plus size={12} /> Thêm ca
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -787,28 +895,31 @@ export default function SchedulesPage() {
                             {assignment.note}
                           </p>
                         )}
-                        <div className="ml-auto inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(assignment)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                          >
-                            <Pencil size={13} /> Sửa
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void remove(assignment)}
-                            disabled={deletingId === assignment.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            {deletingId === assignment.id ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={13} />
-                            )}
-                            Xoá
-                          </button>
-                        </div>
+                        {can("schedule:manage") &&
+                          manageableIds.has(assignment.branch_id) && (
+                          <div className="ml-auto inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(assignment)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                            >
+                              <Pencil size={13} /> Sửa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void remove(assignment)}
+                              disabled={deletingId === assignment.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              {deletingId === assignment.id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={13} />
+                              )}
+                              Xoá
+                            </button>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -850,12 +961,20 @@ export default function SchedulesPage() {
                   <div className="mt-1 flex items-center justify-between rounded-lg border border-slate-200 bg-app px-3 py-2.5">
                     <span className="text-sm font-normal text-slate-700">
                       {employeeName}
+                      {selectedEmployeeIsActive === false && (
+                        <span className="ml-1 text-[11px] font-semibold text-amber-600">
+                          (đã nghỉ)
+                        </span>
+                      )}
                     </span>
                     <button
                       type="button"
                       onClick={() => {
                         setForm((value) => ({ ...value, employeeId: "" }));
                         setEmployeeName("");
+                        // The list opens straight away: replacing the person is the only reason this
+                        // button exists.
+                        setEmployeeDropdownOpen(true);
                       }}
                       className="text-[11px] font-semibold text-primary hover:underline"
                     >
@@ -863,59 +982,85 @@ export default function SchedulesPage() {
                     </button>
                   </div>
                 ) : (
-                  <>
-                    <div className="mt-1 flex gap-2">
-                      <input
-                        value={employeeQuery}
-                        onChange={(event) => setEmployeeQuery(event.target.value)}
-                        placeholder="Nhập tên nhân viên (ít nhất 2 ký tự)"
-                        className="w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void searchEmployees()}
-                        disabled={searchingEmployees}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {searchingEmployees ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : (
-                          <Search size={13} />
-                        )}
-                        Tìm
-                      </button>
-                    </div>
+                  <div ref={employeePickerRef} className="relative mt-1">
+                    <input
+                      value={employeeQuery}
+                      onChange={(event) => {
+                        setEmployeeQuery(event.target.value);
+                        setEmployeeDropdownOpen(true);
+                      }}
+                      onFocus={() => setEmployeeDropdownOpen(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setEmployeeDropdownOpen(false);
+                          return;
+                        }
 
-                    {employeeResults.length > 0 && (
-                      <ul className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-slate-200">
-                        {employeeResults.map((employee) => (
-                          <li key={employee.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setForm((value) => ({
-                                  ...value,
-                                  employeeId: employee.id,
-                                }));
-                                setEmployeeName(employee.full_name);
-                                setEmployeeResults([]);
-                                setEmployeeQuery("");
-                                setFormError("");
-                              }}
-                              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-slate-50"
-                            >
-                              <span className="font-medium text-slate-800">
-                                {employee.full_name}
-                              </span>
-                              <span className="text-[10px] uppercase text-slate-400">
-                                {employee.role}
-                              </span>
-                            </button>
+                        if (event.key === "Enter" && employeeMatches.length > 0) {
+                          event.preventDefault();
+                          selectEmployee(employeeMatches[0]);
+                        }
+                      }}
+                      placeholder="Bấm để xem danh sách, hoặc gõ tên để lọc"
+                      className="w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+                    />
+
+                    {employeeDropdownOpen && (
+                      <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-surface shadow-lg">
+                        {staffLoading && (
+                          <li className="flex items-center gap-2 px-3 py-2 text-xs text-slate-400">
+                            <Loader2 size={13} className="animate-spin" />
+                            Đang tải danh sách nhân sự...
                           </li>
-                        ))}
+                        )}
+
+                        {!staffLoading && !staffAllowed && (
+                          <li className="px-3 py-2 text-xs text-slate-500">
+                            Chỉ chủ sở hữu/quản lý mới xem được danh sách nhân sự.
+                          </li>
+                        )}
+
+                        {!staffLoading &&
+                          staffAllowed &&
+                          employeeMatches.length === 0 && (
+                            <li className="px-3 py-2 text-xs text-slate-500">
+                              Không có nhân viên đang làm việc khớp từ khoá này.
+                            </li>
+                          )}
+
+                        {employeeMatches
+                          .slice(0, EMPLOYEE_RESULT_LIMIT)
+                          .map((member) => (
+                            <li key={member.id}>
+                              <button
+                                type="button"
+                                onClick={() => selectEmployee(member)}
+                                className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-slate-50"
+                              >
+                                <span className="font-medium text-slate-800">
+                                  {member.full_name}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  {roleLabel(member.role)}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+
+                        {employeeMatches.length > EMPLOYEE_RESULT_LIMIT && (
+                          <li className="px-3 py-2 text-[10px] text-slate-400">
+                            Còn {employeeMatches.length - EMPLOYEE_RESULT_LIMIT} người
+                            nữa — gõ thêm để thu hẹp danh sách.
+                          </li>
+                        )}
                       </ul>
                     )}
-                  </>
+
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      Danh sách chỉ gồm nhân viên đang làm việc; tài khoản đã nghỉ
+                      không xếp ca được.
+                    </span>
+                  </div>
                 )}
               </div>
 
@@ -935,12 +1080,28 @@ export default function SchedulesPage() {
                     className={inputClassName}
                   >
                     <option value="">Chọn chi nhánh</option>
-                    {branches.map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </option>
-                    ))}
+                    {branches.map((branch) => {
+                      const manageable = manageableIds.has(branch.id);
+
+                      return (
+                        <option
+                          key={branch.id}
+                          value={branch.id}
+                          // SCRUM-61: a manager cannot schedule into a branch they do not head, so the
+                          // option is grayed out rather than failing after a save.
+                          disabled={manageableIds.size > 0 && !manageable}
+                        >
+                          {branch.name}
+                          {manageable ? "" : " — chỉ xem"}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {!manageableIds.has(form.branchId) && (
+                    <span className="mt-1 block text-[11px] font-normal text-amber-600">
+                      Bạn chỉ xếp ca được cho chi nhánh mình phụ trách (chi nhánh trưởng).
+                    </span>
+                  )}
                 </label>
 
                 <label className="block text-xs font-semibold text-slate-600">
@@ -953,6 +1114,7 @@ export default function SchedulesPage() {
                         shiftId: event.target.value,
                       }))
                     }
+                    disabled={selectableShifts.length === 0}
                     className={inputClassName}
                   >
                     <option value="">Chọn ca</option>
@@ -963,6 +1125,22 @@ export default function SchedulesPage() {
                       </option>
                     ))}
                   </select>
+                  {/*
+                    An empty picker used to be silent. The catalogue is per organization (SCRUM-53),
+                    so an organization whose templates were never seeded has nothing to choose from —
+                    say so rather than letting the operator guess.
+                  */}
+                  {shifts.length === 0 ? (
+                    <span className="mt-1 block text-[11px] font-normal text-amber-600">
+                      Hệ thống chưa có ca làm việc nào. Quản trị viên cần nạp danh mục ca
+                      (supabase/sql/SCRUM-58_shift_catalogue.sql) trước khi xếp ca.
+                    </span>
+                  ) : selectableShifts.length === 0 ? (
+                    <span className="mt-1 block text-[11px] font-normal text-amber-600">
+                      Chi nhánh này chưa có ca làm việc — mọi ca hiện có đều gắn với
+                      chi nhánh khác.
+                    </span>
+                  ) : null}
                 </label>
               </div>
 
@@ -1035,7 +1213,7 @@ export default function SchedulesPage() {
               <button
                 type="button"
                 onClick={() => void submit()}
-                disabled={saving}
+                disabled={saving || !manageableIds.has(form.branchId)}
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:opacity-50"
               >
                 {saving && <Loader2 size={13} className="animate-spin" />}

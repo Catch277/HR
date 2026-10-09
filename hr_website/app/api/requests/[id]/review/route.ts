@@ -5,8 +5,9 @@
  *     summary: Approve or reject a request
  *     description: |
  *       Sets `requests.status` together with `reject_reason` and `approver_id`. Restricted to
- *       OWNER/CHU accounts: the use case checks the caller's role and the
- *       `requests_update_managers` RLS policy (SCRUM-41) repeats the check in the database.
+ *       managers (SCRUM-59 `request:review`): the route answers `403` for another role, the use
+ *       case repeats the check and the `requests_update_managers` RLS policy (SCRUM-41) repeats it
+ *       in the database.
  *     tags:
  *       - Requests
  *     parameters:
@@ -53,7 +54,7 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
- *         description: The caller has no user profile, or the role may not review requests.
+ *         description: The caller has no user profile, the role may not review requests, they do not head the branch the request belongs to (SCRUM-61), or the request is their own (SCRUM-63 — only the organization's OWNER may review their own đơn).
  *         content:
  *           application/json:
  *             schema:
@@ -74,13 +75,15 @@
 import { NextResponse } from "next/server";
 
 import type { ReviewStatus } from "@/lib/domain/entities/RequestEntity";
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { RequestNotFoundError } from "@/lib/domain/errors/RequestNotFoundError";
 import { RequestReviewForbiddenError } from "@/lib/domain/errors/RequestReviewForbiddenError";
+import { RequestSelfReviewError } from "@/lib/domain/errors/RequestSelfReviewError";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { SupabaseRequestRepository } from "@/lib/infrastructure/repositories/SupabaseRequestRepository";
-import { SupabaseUserRepository } from "@/lib/infrastructure/repositories/SupabaseUserRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
-import { GetUserUseCase } from "@/lib/usecases/GetUserUseCase";
 import { ReviewRequestUseCase } from "@/lib/usecases/ReviewRequestUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,41 +137,25 @@ export async function PATCH(
     typeof body.reject_reason === "string" ? body.reject_reason : null;
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // Approving or rejecting is a management action (SCRUM-59). The role still travels into the use
+    // case, which repeats the rule and the `requests_update_managers` policy repeats it in the database.
+    const caller = await requireCapability("request:review");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
-    }
-
-    // The role comes from `public.users`, never from the request body. A signed-in account with
-    // no profile row cannot be placed in a role, so it is a 403 rather than a 401 (see /api/search).
-    const getUser = new GetUserUseCase(new SupabaseUserRepository());
-    const profile = await getUser.execute(user.id);
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "The account has no user profile." },
-        { status: 403 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const reviewRequest = new ReviewRequestUseCase(
       new SupabaseRequestRepository(),
+      new SupabaseBranchRepository(),
     );
     const reviewed = await reviewRequest.execute({
       requestId: id,
       status,
       rejectReason,
       // Ownership always comes from the session.
-      approverId: user.id,
-      approverRole: profile.role,
+      approverId: caller.userId,
+      approverRole: caller.role,
     });
 
     return NextResponse.json(reviewed);
@@ -179,6 +166,19 @@ export async function PATCH(
 
     if (error instanceof RequestReviewForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    // SCRUM-63: a branch head cannot decide their own đơn — the organization's owner does.
+    if (error instanceof RequestSelfReviewError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     if (

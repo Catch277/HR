@@ -1,6 +1,6 @@
 export class AttendanceCorrectionForbiddenError extends Error {
   constructor() {
-    super("Only an OWNER/CHU manager may correct an attendance record.");
+    super("Only a manager (OWNER/MANAGER) may correct an attendance record.");
     this.name = "AttendanceCorrectionForbiddenError";
   }
 }

@@ -127,6 +127,22 @@ export class SupabaseShiftAssignmentRepository
     return ((data ?? []) as unknown as AssignmentRow[]).map(toAssignment);
   }
 
+  async findById(id: string): Promise<ShiftAssignment | null> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("shift_assignments")
+      .select(ASSIGNMENT_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Unable to load the shift assignment: ${error.message}`);
+    }
+
+    // RLS scopes the read (SCRUM-60: own shifts, or a manager), so a hidden row is simply "no shift".
+    return data ? toAssignment(data as unknown as AssignmentRow) : null;
+  }
+
   async create(input: CreateShiftAssignmentInput): Promise<ShiftAssignment> {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase

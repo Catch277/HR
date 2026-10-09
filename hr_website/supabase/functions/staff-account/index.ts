@@ -18,7 +18,8 @@
 //
 //   1. verify the JWT (Edge Functions verify it before the handler runs; keep verify_jwt ON),
 //   2. read the caller's own profile with the service client,
-//   3. require that they belong to an organization and hold OWNER or CHU,
+//   3. require that they belong to an organization and are its OWNER (SCRUM-59: handing out
+//      accounts is the owner's decision; a MANAGER gets 403 here and from the route that calls us),
 //   4. only ever touch accounts of that organization,
 //   5. validate email/password here as well, and rate-limit per organization.
 //
@@ -41,7 +42,7 @@ const CORS_HEADERS = {
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_FULL_NAME_LENGTH = 120;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const INVITE_ROLES = new Set(["EMPLOYEE", "CHU"]);
+const INVITE_ROLES = new Set(["EMPLOYEE", "MANAGER"]);
 
 /** A runaway form (or a script) should not be able to mint accounts all night. */
 const MAX_PROVISIONED_PER_HOUR = 20;
@@ -117,9 +118,9 @@ Deno.serve(async (request: Request) => {
     return json({ error: "The caller does not belong to an organization." }, 403);
   }
 
-  if (callerRole !== "OWNER" && callerRole !== "CHU") {
+  if (callerRole !== "OWNER") {
     return json(
-      { error: "Only an OWNER or CHU of the organization may manage staff accounts." },
+      { error: "Only the owner of the organization may manage staff accounts." },
       403,
     );
   }
@@ -167,7 +168,11 @@ function fieldError(
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
   const fullName = typeof body.full_name === "string" ? body.full_name.trim() : "";
-  const role = typeof body.role === "string" ? body.role.toUpperCase() : "EMPLOYEE";
+  const rawRole = typeof body.role === "string" ? body.role.toUpperCase() : "EMPLOYEE";
+  // SCRUM-59 renamed `CHU` to `MANAGER`. The old spelling is still accepted so that a call queued
+  // before the rename does not fail, but the row is always written in the new vocabulary — which is
+  // what `organization_invites_role_check` accepts once `SCRUM-59_role_model.sql` has been applied.
+  const role = rawRole === "CHU" ? "MANAGER" : rawRole;
 
   if (!EMAIL_PATTERN.test(email) || email.length > 160) {
     return json({ error: "email must be a valid email address." }, 422);
@@ -188,7 +193,7 @@ function fieldError(
   }
 
   if (!INVITE_ROLES.has(role)) {
-    return json({ error: "role must be EMPLOYEE or CHU." }, 422);
+    return json({ error: "role must be EMPLOYEE or MANAGER." }, 422);
   }
 
   return { email, password, fullName, role };

@@ -7,9 +7,8 @@ import { OrganizationForbiddenError } from "@/lib/domain/errors/OrganizationForb
 import { OrganizationNotFoundError } from "@/lib/domain/errors/OrganizationNotFoundError";
 import type { IOrganizationInviteRepository } from "@/lib/domain/repositories/IOrganizationInviteRepository";
 import type { IOrganizationRepository } from "@/lib/domain/repositories/IOrganizationRepository";
+import { isOwnerRole } from "@/lib/domain/roles";
 import { emailValidationError } from "@/lib/usecases/credentials";
-
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
 const ROLE_SET: ReadonlySet<string> = new Set(INVITE_ROLES);
 const MAX_NAME_LENGTH = 120;
 
@@ -32,7 +31,7 @@ export class CreateOrganizationInviteUseCase {
   ) {}
 
   async execute(input: CreateOrganizationInviteInput): Promise<OrganizationInvite> {
-    if (!MANAGER_ROLES.has(input.callerRole.trim().toUpperCase())) {
+    if (!isOwnerRole(input.callerRole)) {
       throw new OrganizationForbiddenError();
     }
 

@@ -1,5 +1,6 @@
 import { OrganizationForbiddenError } from "@/lib/domain/errors/OrganizationForbiddenError";
 import type { IOrganizationRepository } from "@/lib/domain/repositories/IOrganizationRepository";
+import { isOwnerRole } from "@/lib/domain/roles";
 
 export type RotateOrganizationCodeInput = {
   callerRole: string;
@@ -16,7 +17,7 @@ export class RotateOrganizationCodeUseCase {
   ) {}
 
   async execute(input: RotateOrganizationCodeInput): Promise<string> {
-    if (input.callerRole.trim().toUpperCase() !== "OWNER") {
+    if (!isOwnerRole(input.callerRole)) {
       throw new OrganizationForbiddenError();
     }
 

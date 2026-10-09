@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { useProfile } from "@/components/ProfileProvider";
 import { asArray, asArrayField } from "@/lib/asArray";
 import type { Attendance } from "@/lib/domain/entities/Attendance";
 import type { EmployeeStatus } from "@/lib/domain/entities/EmployeeStatus";
@@ -34,6 +35,16 @@ const REQUEST_STATUS_TONES: Record<string, string> = {
 };
 
 const currency = new Intl.NumberFormat("vi-VN");
+
+/**
+ * The dashboard tile row is smaller for a role that may not see the roster (`employee-status:view`) or
+ * the revenue report (`report:view`). Written as literals so Tailwind's scanner finds them.
+ */
+const TILE_GRID_CLASSES: Record<number, string> = {
+  2: "lg:grid-cols-2",
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+};
 
 function formatCurrency(value: number): string {
   return `${currency.format(Math.round(value))} ₫`;
@@ -80,6 +91,14 @@ type DashboardData = {
 };
 
 export default function Dashboard() {
+  // SCRUM-59: the roster and the revenue report are management views, so an employee's dashboard must
+  // neither fetch them (that would render a permanent "Không tải được" banner for a `403` the role
+  // cannot avoid) nor show a tile that would read zero. The two tiles are therefore derived from the
+  // same capability table the sidebar uses.
+  const { can, loading: profileLoading } = useProfile();
+  const canViewRoster = can("employee-status:view");
+  const canViewReport = can("report:view");
+
   const [data, setData] = useState<DashboardData>({
     roster: [],
     workDate: "",
@@ -96,28 +115,39 @@ export default function Dashboard() {
   const today = getBusinessDay(new Date());
 
   useEffect(() => {
+    // Wait for the role: which tiles exist (and therefore which endpoints may be called) depends on
+    // it, and `can()` answers `false` while the profile is still unknown.
+    if (profileLoading) {
+      return;
+    }
+
     let cancelled = false;
 
     async function load(): Promise<DashboardData & { error: string | null }> {
       const [rosterResponse, requestsResponse, attendanceResponse, reportResponse] =
         await Promise.all([
-          fetch("/api/employee-status", { cache: "no-store" }),
+          canViewRoster
+            ? fetch("/api/employee-status", { cache: "no-store" })
+            : null,
           fetch("/api/requests?status=all", { cache: "no-store" }),
           fetch(`/api/attendance?start_date=${today}`, { cache: "no-store" }),
-          fetch("/api/revenue/report?period=month", { cache: "no-store" }),
+          canViewReport
+            ? fetch("/api/revenue/report?period=month", { cache: "no-store" })
+            : null,
         ]);
 
       // The dashboard is a summary, so one failing tile must not blank the page: every response is
-      // read on its own and the note names the part that is missing.
+      // read on its own and the note names the part that is missing. A tile this role may not see was
+      // never fetched, so `null` here is not a failure.
       const failed = [
-        rosterResponse.ok ? "" : "tình trạng nhân viên",
+        rosterResponse && !rosterResponse.ok ? "tình trạng nhân viên" : "",
         requestsResponse.ok ? "" : "đơn từ",
         attendanceResponse.ok ? "" : "bảng công hôm nay",
       ].filter(Boolean);
 
       // `/api/employee-status` answers `{ updated_at, work_date, data }`; the other three answer bare
       // arrays. `asArray`/`asArrayField` keep a surprise body from throwing while the page renders.
-      const snapshot = rosterResponse.ok
+      const snapshot = rosterResponse?.ok
         ? ((await rosterResponse.json()) as EmployeeStatusSnapshot)
         : null;
 
@@ -130,15 +160,15 @@ export default function Dashboard() {
         attendance: attendanceResponse.ok
           ? asArray<Attendance>(await attendanceResponse.json())
           : [],
-        report: reportResponse.ok
+        report: reportResponse?.ok
           ? ((await reportResponse.json()) as RevenueReportResult)
           : null,
         error:
           failed.length > 0
             ? `Không tải được: ${failed.join(", ")}.`
-            : reportResponse.ok
-              ? ""
-              : "Không tải được báo cáo doanh thu.",
+            : reportResponse && !reportResponse.ok
+              ? "Không tải được báo cáo doanh thu."
+              : "",
       };
     }
 
@@ -170,7 +200,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [today, reloadToken]);
+  }, [today, reloadToken, profileLoading, canViewRoster, canViewReport]);
 
   function refresh() {
     setLoading(true);
@@ -193,6 +223,7 @@ export default function Dashboard() {
   const summary = data.report?.summary ?? null;
   const monthRevenue = summary?.total_revenue_amount ?? 0;
   const comparison = data.report?.comparison ?? null;
+  const visibleTileCount = 2 + (canViewRoster ? 1 : 0) + (canViewReport ? 1 : 0);
   // Prefer the business day the API answered for; the local computation is the fallback when that
   // call failed, so the header always names a date.
   const businessDate = data.workDate || today;
@@ -206,8 +237,10 @@ export default function Dashboard() {
           </p>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tổng quan</h1>
           <p className="mt-1 text-xs text-slate-500">
-            Ngày làm việc {businessDate} (giờ Việt Nam) — số liệu lấy trực tiếp từ bảng công, đơn
-            từ và doanh thu.
+            Ngày làm việc {businessDate} (giờ Việt Nam) — số liệu lấy trực tiếp từ{" "}
+            {canViewReport
+              ? "bảng công, đơn từ và doanh thu."
+              : "bảng công và đơn từ của chính bạn."}
           </p>
         </div>
         <button
@@ -228,47 +261,53 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Nhân sự trong ngày
+      <div
+        className={`grid gap-4 sm:grid-cols-2 ${TILE_GRID_CLASSES[visibleTileCount] ?? "lg:grid-cols-4"}`}
+      >
+        {canViewRoster && (
+          <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Nhân sự trong ngày
+              </p>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
+                <Users size={16} />
+              </span>
+            </div>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900">
+              {data.roster.length}
             </p>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary">
-              <Users size={16} />
-            </span>
+            <p className="mt-1 text-[10px] text-slate-500">
+              {workingCount} đang trong ca
+            </p>
           </div>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900">
-            {data.roster.length}
-          </p>
-          <p className="mt-1 text-[10px] text-slate-500">
-            {workingCount} đang trong ca
-          </p>
-        </div>
+        )}
 
-        <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Doanh thu tháng
+        {canViewReport && (
+          <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Doanh thu tháng
+              </p>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                <CircleDollarSign size={16} />
+              </span>
+            </div>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900">
+              {formatCurrency(monthRevenue)}
             </p>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-              <CircleDollarSign size={16} />
-            </span>
+            <p
+              className={`mt-1 flex items-center gap-1 text-[10px] ${
+                (comparison?.percentage_change ?? 0) < 0
+                  ? "text-rose-600"
+                  : "text-emerald-600"
+              }`}
+            >
+              <TrendingUp size={11} />
+              {formatPercent(comparison?.percentage_change ?? null)} so với kỳ trước
+            </p>
           </div>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900">
-            {formatCurrency(monthRevenue)}
-          </p>
-          <p
-            className={`mt-1 flex items-center gap-1 text-[10px] ${
-              (comparison?.percentage_change ?? 0) < 0
-                ? "text-rose-600"
-                : "text-emerald-600"
-            }`}
-          >
-            <TrendingUp size={11} />
-            {formatPercent(comparison?.percentage_change ?? null)} so với kỳ trước
-          </p>
-        </div>
+        )}
 
         <div className="rounded-xl border border-slate-200/80 bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between">
@@ -305,7 +344,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className={`grid gap-4 ${canViewReport ? "lg:grid-cols-2" : ""}`}>
         <section className="flex flex-col rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-900">Đơn từ gần đây</h2>
@@ -351,6 +390,7 @@ export default function Dashboard() {
           )}
         </section>
 
+        {canViewReport && (
         <section className="flex flex-col rounded-xl border border-slate-200/80 bg-surface p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-900">
@@ -400,6 +440,7 @@ export default function Dashboard() {
             </>
           )}
         </section>
+        )}
       </div>
     </div>
   );

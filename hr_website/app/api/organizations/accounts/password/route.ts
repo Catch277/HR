@@ -72,7 +72,7 @@ import { NextResponse } from "next/server";
 
 import { EdgeFunctionStaffProvisioningService } from "@/lib/infrastructure/EdgeFunctionStaffProvisioningService";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -109,7 +109,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const caller = await requireCaller();
+  // Handing out temporary passwords is the owner's own action (SCRUM-59).
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;

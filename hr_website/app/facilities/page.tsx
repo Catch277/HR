@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { useProfile } from "@/components/ProfileProvider";
+import { canManageBranch, defaultBranchId } from "@/lib/domain/branchScope";
 import {
   FACILITY_CATEGORIES,
   FACILITY_CONDITIONS,
@@ -25,7 +27,8 @@ import {
   type FacilityCondition,
 } from "@/lib/domain/entities/Facility";
 
-type Branch = { id: string; name: string };
+// SCRUM-61 needs `manager_id`: it is what says whether the caller heads the branch.
+type Branch = { id: string; name: string; manager_id: string | null };
 
 type FacilityForm = {
   branchId: string;
@@ -121,8 +124,23 @@ function toForm(facility: Facility): FacilityForm {
 }
 
 export default function FacilitiesPage() {
+  // SCRUM-61: the inventory of a branch belongs to the branch head. The owner manages every branch;
+  // a manager only their own, so the rows and the picker of another branch are read-only.
+  const { profile, can } = useProfile();
+  const viewerId = profile?.id ?? null;
+  const managesAllBranches = can("branch:manage");
+
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+
+  // The branches this caller may write into (the owner all of them, a manager only their own).
+  const manageableIds = new Set(
+    branches
+      .filter((branch) =>
+        canManageBranch(branch, { userId: viewerId, managesAllBranches }),
+      )
+      .map((branch) => branch.id),
+  );
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [query, setQuery] = useState("");
@@ -264,7 +282,17 @@ export default function FacilitiesPage() {
   ).size;
 
   function openCreate() {
-    setForm({ ...EMPTY_FORM, branchId: branches[0]?.id ?? "" });
+    // A manager adds equipment to their own branch by default; a manager who heads no branch gets no
+    // default, so the save button stays disabled instead of offering a form the API would refuse.
+    const preferred = defaultBranchId(branches, {
+      userId: viewerId,
+      managesAllBranches,
+    });
+
+    setForm({
+      ...EMPTY_FORM,
+      branchId: manageableIds.has(preferred) ? preferred : "",
+    });
     setFormError("");
     setModal({ mode: "create" });
   }
@@ -655,28 +683,35 @@ export default function FacilitiesPage() {
                       {formatCheckedAt(facility.last_checked_at)}
                     </td>
                     <td className="px-4 py-4 text-right">
-                      <div className="inline-flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(facility)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                        >
-                          <Pencil size={13} /> Chỉnh sửa
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void remove(facility)}
-                          disabled={deletingId === facility.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                        >
-                          {deletingId === facility.id ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Trash2 size={13} />
-                          )}
-                          Xoá
-                        </button>
-                      </div>
+                      {manageableIds.has(facility.branch_id) ? (
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(facility)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                          >
+                            <Pencil size={13} /> Chỉnh sửa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void remove(facility)}
+                            disabled={deletingId === facility.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            {deletingId === facility.id ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                            Xoá
+                          </button>
+                        </div>
+                      ) : (
+                        // SCRUM-61: this row belongs to a branch the caller does not head.
+                        <span className="text-[11px] font-medium text-slate-400">
+                          Chỉ xem
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -748,12 +783,27 @@ export default function FacilitiesPage() {
                   className={inputClassName}
                 >
                   <option value="">Chọn chi nhánh</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
+                  {branches.map((branch) => {
+                    const manageable = manageableIds.has(branch.id);
+
+                    return (
+                      <option
+                        key={branch.id}
+                        value={branch.id}
+                        // SCRUM-61: equipment belongs to a branch, so a manager may only pick their own.
+                        disabled={manageableIds.size > 0 && !manageable}
+                      >
+                        {branch.name}
+                        {manageable ? "" : " — chỉ xem"}
+                      </option>
+                    );
+                  })}
                 </select>
+                {!manageableIds.has(form.branchId) && (
+                  <span className="mt-1 block text-[11px] font-normal text-amber-600">
+                    Bạn chỉ cập nhật thiết bị của chi nhánh mình phụ trách (chi nhánh trưởng).
+                  </span>
+                )}
               </label>
 
               <label className="block text-xs font-semibold text-slate-600">
@@ -890,7 +940,7 @@ export default function FacilitiesPage() {
               <button
                 type="button"
                 onClick={() => void submit()}
-                disabled={saving}
+                disabled={saving || !manageableIds.has(form.branchId)}
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:opacity-50"
               >
                 {saving && <Loader2 size={13} className="animate-spin" />}

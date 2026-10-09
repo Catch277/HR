@@ -6,8 +6,9 @@
  *     description: |
  *       Fixes the times, status and note of one record (SCRUM-23) and stamps `corrected_by`,
  *       `corrected_at` and `correction_reason`, so a manager can repair a wrong timesheet that
- *       payroll would otherwise trust. Restricted to OWNER/CHU: the use case checks the role and
- *       the `attendance_update_managers` RLS policy repeats it in the database. The reason is
+ *       payroll would otherwise trust. Restricted to managers (SCRUM-59 `attendance:review`): the
+ *       route answers `403` for another role, the use case repeats the check and the
+ *       `attendance_update_managers` RLS policy repeats it in the database. The reason is
  *       mandatory.
  *     tags:
  *       - Attendance
@@ -66,7 +67,7 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
- *         description: The caller has no user profile, or the role may not correct records.
+ *         description: The caller has no user profile, the role may not correct records, or they do not head that branch (SCRUM-61).
  *         content:
  *           application/json:
  *             schema:
@@ -89,11 +90,12 @@ import { NextResponse } from "next/server";
 import { ATTENDANCE_STATUSES } from "@/lib/domain/entities/Attendance";
 import { AttendanceCorrectionForbiddenError } from "@/lib/domain/errors/AttendanceCorrectionForbiddenError";
 import { AttendanceNotFoundError } from "@/lib/domain/errors/AttendanceNotFoundError";
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { SupabaseAttendanceRepository } from "@/lib/infrastructure/repositories/SupabaseAttendanceRepository";
-import { SupabaseUserRepository } from "@/lib/infrastructure/repositories/SupabaseUserRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { CorrectAttendanceUseCase } from "@/lib/usecases/CorrectAttendanceUseCase";
-import { GetUserUseCase } from "@/lib/usecases/GetUserUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -176,31 +178,17 @@ export async function PATCH(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // Correcting a timesheet is a management action (SCRUM-59). The use case repeats the rule for
+    // the role it is given, so the caller is still checked there as well.
+    const caller = await requireCapability("attendance:review");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
-    }
-
-    const getUser = new GetUserUseCase(new SupabaseUserRepository());
-    const profile = await getUser.execute(user.id);
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "The account has no user profile." },
-        { status: 403 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const correctAttendance = new CorrectAttendanceUseCase(
       new SupabaseAttendanceRepository(),
+      new SupabaseBranchRepository(),
     );
     const record = await correctAttendance.execute({
       attendanceId: id,
@@ -209,8 +197,9 @@ export async function PATCH(
       status: status as (typeof ATTENDANCE_STATUSES)[number],
       note: typeof body.note === "string" ? body.note : null,
       correctionReason: body.correction_reason,
-      correctorId: user.id,
-      correctorRole: profile.role,
+      // Ownership always comes from the session.
+      correctorId: caller.userId,
+      correctorRole: caller.role,
     });
 
     return NextResponse.json(record);
@@ -221,6 +210,14 @@ export async function PATCH(
 
     if (error instanceof AttendanceCorrectionForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     if (

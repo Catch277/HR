@@ -107,7 +107,7 @@ export class SupabaseOrganizationInviteRepository
       throw new Error(`Unable to create the invite: ${error.message}`);
     }
 
-    // The insert policy requires OWNER/CHU of the organization, so no row back means refused.
+    // The insert policy requires the organization's OWNER (SCRUM-59), so no row back means refused.
     if (!data) {
       throw new OrganizationForbiddenError();
     }

@@ -27,7 +27,7 @@ server, no ORM and no background worker in this app.
 | Route handlers | `app/api/**/route.ts`                   | HTTP only: parse, authenticate, call one use case, map errors to status codes. No queries, no rules.    |
 | Use cases      | `lib/usecases/*UseCase.ts`              | Business rules; depend only on `lib/domain` interfaces passed into the constructor.                     |
 | Domain         | `lib/domain/**`                         | Entities, repository/service interfaces, typed errors. Framework-free (no Next.js or Supabase imports). |
-| Infrastructure | `lib/infrastructure/**`                 | Implements domain interfaces: Supabase repositories and the Gemini LLM service.                         |
+| Infrastructure | `lib/infrastructure/**`                 | Implements domain interfaces: Supabase repositories, the Gemini LLM service and the Nominatim reverse geocoder. |
 | UI             | `app/<segment>/page.tsx`, `components/` | App Router pages, Vietnamese copy, Tailwind v4 + lucide-react.                                          |
 
 ## Repository context
@@ -77,6 +77,7 @@ targeted lint, the endpoint or page you changed and `/api-docs`. Adding a test r
 ```text
 hr_website/
 ├── app/                          # App Router
+│   ├── api/_lib/requireCaller.ts # requireCaller() / requireCapability("…") — session + role gate (SCRUM-59)
 │   ├── api/<resource>/route.ts   # Route handlers (thin controllers)
 │   ├── api/<resource>/[id]/...   # Nested resources (requests/[id]/review, notifications/[id]/read)
 │   ├── api/swagger/route.ts      # Serves the generated public/swagger.json
@@ -86,17 +87,25 @@ hr_website/
 │   ├── page.tsx                  # Dashboard
 │   ├── layout.tsx                # Shell: Sidebar + Header + Be Vietnam Pro font
 │   └── globals.css
-├── components/                   # Header.tsx, Sidebar.tsx
+├── components/                   # Header.tsx, Sidebar.tsx, ProfileProvider.tsx, LocationPickerMap*.tsx (Leaflet)
 ├── lib/
+│   ├── accessPolicy.ts           # Capability table + screen→capability map (SCRUM-59)
+│   ├── domain/branchScope.ts     # canManageBranch() / defaultBranchId() — who may manage a branch (SCRUM-61)
 │   ├── domain/entities/          # Plain interfaces (DB-backed fields stay snake_case)
 │   ├── domain/errors/            # Typed error classes, one per case
 │   ├── domain/repositories/      # I<Name>Repository / service interfaces
+│   ├── domain/roles.ts           # OWNER / MANAGER / EMPLOYEE, normalizeRole() (CHU → MANAGER)
 │   ├── usecases/                 # One class per business action + businessDay.ts helper
-│   ├── infrastructure/           # supabaseClient.ts, Supabase*Repository.ts, GeminiLLMService.ts
+│   │                             # + branchScope.ts (assertBranchManagedBy, SCRUM-61)
+│   ├── infrastructure/           # supabaseClient.ts, Supabase*Repository.ts, GeminiLLMService.ts,
+│   │                             # NominatimReverseGeocodingService.ts, EdgeFunctionStaffProvisioningService.ts
 │   ├── publicPaths.ts            # Screens rendered outside the shell (proxy.ts + Header/Sidebar)
+│   ├── geo/vietnamOutline.ts     # Generated Vietnam land outline — never edit by hand
+│   ├── geo/vietnam.ts            # isInsideVietnam() point-in-polygon + VIETNAM_BOUNDS envelope
 │   └── swagger.ts                # OpenAPI definition + shared component schemas
 ├── scripts/generate-swagger.ts   # Builds public/swagger.json; exits 1 when no paths are found
 ├── scripts/ingest-knowledge.ts   # docs/*.md → chunks + embeddings → supabase/sql/knowledge_seed.sql
+├── scripts/extract-vietnam-outline.mjs # Natural Earth 1:10m → lib/geo/vietnamOutline.ts (manual regen)
 ├── docs/                         # Source documents for the AI knowledge base (README.md is skipped)
 ├── supabase/sql/SCRUM-*.sql      # Idempotent schema/RLS/RPC scripts applied by hand
 └── public/swagger.json           # Generated — never edit by hand
@@ -124,10 +133,25 @@ that must not live in SQL).
 4. Validate by hand — UUIDs against a module-level `UUID_PATTERN`, numbers with `Number.isFinite`,
    enums with a `Set` (`REPORT_PERIODS`), calendar dates with an explicit round-trip check. Return
    `400` with a message naming the offending fields. Never trust the payload, even for ids.
-5. Authenticate: `const supabase = await createSupabaseServerClient();` then
-   `const { data: { user }, error: authError } = await supabase.auth.getUser();` → `401` when
-   `authError || !user`. Ownership fields (`created_by`, `closed_by`, `approver_id`) always come from
-   `user.id`, never from the body.
+   An *optional* field is omitted **or `null`**, because screens clear them with `value || null`
+   (`close_note: closeNote.trim() || null`): test it as
+   `value === undefined || value === null || typeof value === "string"` — never as
+   `value !== undefined && typeof value !== "string"`, which rejects `null` and turns the ordinary
+   "left blank" case into a `400` (that is what made `PUT /api/revenue/close` fail whenever the note
+   box was empty, while typing a note worked). `app/api/branches/_lib/branchRequest.ts` and
+   `app/api/organizations/invites/route.ts` are the references.
+5. Authenticate and authorize in one call: `const caller = await requireCapability("schedule:manage");`
+   then `if (!caller.ok) return caller.response;` (`app/api/_lib/requireCaller.ts`) — it answers `401`
+   without a session, `403` without a `users` row and `403` when the role does not hold that capability,
+   which is the same table `proxy.ts`, the sidebar and the pages read (`lib/accessPolicy.ts`). Use the
+   bare `requireCaller()` only for a route every signed-in member may call, and the raw
+   `createSupabaseServerClient()` + `supabase.auth.getUser()` pair only when a route needs the session
+   for something else (e.g. `GET /api/branches`). Ownership fields (`created_by`, `closed_by`,
+   `approver_id`, `corrector_id`) always come from `caller.userId`, never from the body — and pass
+   `caller.role` into a use case that re-checks the rule.
+   A capability is the *first* of three layers, not the only one: the use case repeats the rule for the
+   caller it is given and RLS (`is_organization_manager()` / `is_organization_owner()`, SCRUM-59/60) is
+   what actually decides which rows exist.
 6. Call exactly one use case: `await new ReviewRequestUseCase(new SupabaseRequestRepository()).execute({...})`,
    passing camelCase input.
 7. Map failures: `instanceof` typed errors → `403`/`404`/`409`; anything else → `console.error("<action>", error)`
@@ -174,12 +198,15 @@ that must not live in SQL).
   and must be **run by hand** in Supabase Dashboard → SQL Editor (there is no migration runner or Supabase CLI here).
   New scripts are idempotent (`create table if not exists`, `drop policy if exists` before `create policy`),
   enable RLS and grant the narrowest policy. Never edit a script that has already been applied — add a new one.
-- Tables in use: `users` (with `role` — `OWNER`/`CHU` can review requests and manage branches — and
+- Tables in use: `users` (with `role` — `OWNER`/`MANAGER` can review requests, run the timesheet and the
+  schedule, and manage the facilities and revenue, while only `OWNER` manages branches, staff accounts and
+  the organization itself (SCRUM-59) — and
   `is_active`, false meaning the account left the company), `organizations` /
   `organization_join_codes` / `organization_invites` / `organization_join_attempts` (SCRUM-51: the
   tenant, its join code, the register of accounts that may spend that code, and the join audit trail),
   `requests`,
-  `shifts` (**the shift template catalogue** — name + hours, written by SCRUM-30 and read by quick search),
+  `shifts` (**the shift template catalogue** — name + hours, written by SCRUM-30, seeded per organization by
+  SCRUM-58 and read by quick search),
   `shift_assignments` (the schedule: one employee × one template × one `work_date`), `attendance` (the
   timesheet: one employee × one `work_date`, GPS point + distance, photo, complaint, verification),
   `facilities`, `daily_revenue`, `branches`, `notifications`, `notification_settings`, plus the chat
@@ -204,8 +231,11 @@ that must not live in SQL).
   `SCRUM-48` (notifications), `SCRUM-49` (quick search), the timesheet as `SCRUM-21` with review
   (corrections + khiếu nại) as `SCRUM-23`, staff administration as `SCRUM-24`, and the tenant model
   as `SCRUM-51` (organizations, join code, register, join RPCs), `SCRUM-52` (owner-created accounts
-  through the `staff-account` Edge Function) and `SCRUM-53` (organization scoping of the operational
-  tables) — cite the ticket in the code docs you touch.
+  through the `staff-account` Edge Function), `SCRUM-53` (organization scoping of the operational
+  tables), `SCRUM-59` (the three-level role model: `CHU` → `MANAGER`, `is_organization_owner()`, the
+  owner-only policies) and `SCRUM-60` (the per-role *read* scope) — cite the ticket in the code docs you
+  touch. Branch management is ticket `SCRUM-61` (a chi nhánh trưởng only writes the branch they head,
+  deleting a branch is owner-only and refuses while it still has data).
 
 ## UI & i18n conventions
 
@@ -257,7 +287,7 @@ that must not live in SQL).
   discard uncommitted work.
 - Weaken or bypass RLS, or swap the request-scoped Supabase client for an admin/service-role client. The
   single privileged path is the `staff-account` Edge Function: it authorizes the *caller's* JWT, requires
-  `OWNER`/`CHU` of an organization, and its service-role key stays in Supabase's own secrets — never in
+  `OWNER` of an organization, and its service-role key stays in Supabase's own secrets — never in
   this app, its env files or a client bundle.
 - Remove or downgrade lint/type checks (or add ignores) to make something pass.
 - Touch the sibling apps `hr_mobile_app/` and `landing_website/` from here.
@@ -297,7 +327,8 @@ that must not live in SQL).
   `supabase/sql/*.sql` before debugging an "empty" or "not found" result, and remember RPCs must respect
   `auth.uid()`.
 - A missing `users` row for a signed-in account is a `403` (see `/api/search`), not a `401` — `401` means
-  no session at all. `users.role` gates approvals (`OWNER`/`CHU` in `ReviewRequestUseCase`), and
+  no session at all. `users.role` gates approvals (`OWNER`/`MANAGER` through `request:review` in
+`ReviewRequestUseCase`), and
   `PATCH /api/requests/[id]/review` now runs on the real `requests` table: the route reads the role from
   the session's profile, the use case rejects other roles and the `requests_update_managers` policy
   (SCRUM-41) repeats that check in the database. Never go back to trusting a role sent in the body.
@@ -326,6 +357,22 @@ that must not live in SQL).
   schedule — do not merge them. Overlap detection lives in the use case
   (`lib/usecases/shiftOverlap.ts`) because only it can compare the hours of two templates; the database only
   guards the exact duplicate with a unique index on `(employee_id, work_date, shift_id)`.
+- The shift catalogue is **per organization** (SCRUM-53 put `organization_id = current_organization_id()`
+  into `shifts_select_authenticated`), while SCRUM-30's four seeds were written before the column existed,
+  so they carry `organization_id = null` and are invisible to every signed-in member. That is why the
+  "Ca làm việc" picker on `/schedules` could be empty while the screen was healthy: reading worked, there
+  was nothing to read. `supabase/sql/SCRUM-58_shift_catalogue.sql` adopts those legacy rows when the project
+  has exactly one organization, seeds the standard names for every organization that is missing one and adds
+  an `after insert` trigger on `public.organizations` so a new tenant is seeded on creation — nothing in the
+  app can insert a template (`shifts` has a SELECT policy only), so the database is the only owner of the
+  catalogue.
+- `/schedules` picks the employee from the SCRUM-24 directory (`GET /api/users`), not from `/api/search`:
+  the picker needs `is_active` to leave out the accounts that have quit, and the directory already holds the
+  name, role and that flag. A non-manager gets `403` from the directory and reads "chỉ chủ sở hữu/quản lý
+  mới xem được danh sách nhân sự" — acceptable, because `shift_assignments_insert_managers` lets only
+  `OWNER`/`MANAGER` write a shift at all. The exclusion is deliberately a **UI** rule: somebody deactivated after
+  being scheduled keeps their assignment (it stays editable and is shown with `(đã nghỉ)`), so a blanket
+  check inside `CreateShiftAssignmentUseCase` would break that legitimate edit.
 - Embedded PostgREST selects (`employee:users (id, full_name)`) defeat the client's type inference: `data`
   comes back as `GenericStringError`, so those casts go through `unknown` and the row type is normalised in
   the repository. A to-one embedding can also arrive as an array, so normalise with a `firstOf` helper.
@@ -349,6 +396,103 @@ that must not live in SQL).
   fails with `stack depth limit exceeded`; the same error silently disables the `/onboarding` redirect,
   which is what makes the organization feature look missing after login. Never "simplify" them back to
   invoker, and never inline a `select … from public.users` into a policy on `users`.
+  `public.is_organization_owner()` (SCRUM-59) is the third one and follows the same rule.
+- The three-level role model (SCRUM-59/60) is one table in the app and one set of policies in the database,
+  and they must agree:
+  - `lib/domain/roles.ts` owns the vocabulary (`OWNER`/`MANAGER`/`EMPLOYEE`, `normalizeRole` mapping the
+    legacy `CHU` → `MANAGER`) and `lib/accessPolicy.ts` owns the capability table plus the
+    screen→capability map. Compare roles only through those two files — never `role === "CHU"`.
+  - `requireCapability("…")` (`app/api/_lib/requireCaller.ts`) is what a route handler starts with, and
+    `useProfile().can("…")` (`components/ProfileProvider.tsx`) is what hides a control the role may not
+    use. Adding a screen means adding its capability to `SCREEN_ACCESS` (`proxy.ts` bounces a deep link
+    and `Sidebar` filters the link with the same row) and a page whose buttons a lower role may not press
+    has to hide them — a `403` a click away is a bug in the page, not a feature.
+  - The middle level is `MANAGER`; `CHU` survives only as an alias in `normalizeRole` and in the
+    pre-SCRUM-59 SQL scripts (never edit an applied script — the rename lives in `SCRUM-59_role_model.sql`).
+  - Deploy order is `SCRUM-59` → app **and** the redeployed `staff-account` Edge Function (its
+    `INVITE_ROLES` and owner check used to spell `CHU`) → `SCRUM-60`, because `SCRUM-60` narrows reads that
+    an older bundle would still be querying → `SCRUM-61` together with the build that ships it, since the
+    branch scope only makes writes stricter.
+- The branch scope (SCRUM-61) is the third axis of the role model, and it lives in the same three places:
+  the capability table, the use cases and RLS.
+  - `lib/domain/branchScope.ts` is the only copy of the rule — `canManageBranch(branch, viewer)` (the
+    organization's `OWNER`, or the account named in `branches.manager_id`) plus `defaultBranchId()` for the
+    screens — and `assertBranchManagedBy(repository, branchId, caller)`
+    (`lib/usecases/branchScope.ts`) is what a use case calls. Never re-implement the comparison
+    (`branch.manager_id === caller.userId`) in a route or a page: the two would drift.
+  - The guard answers `403` (another branch) or `404` (unknown branch) *before* the write, so RLS never has
+    to express the rule as "silently matched no row", which the caller would read as "not found".
+  - Write policies ask `public.heads_branch(branch_id)` instead of `is_organization_manager()` — on
+    `branches`, `daily_revenue`, `shift_assignments`, `attendance`, `facilities` and `requests` — so a
+    manager who heads no branch writes nothing while still *reading* the organization (SCRUM-60). The
+    helper must stay `security definer`: it reads `branches` from a policy on `branches`, which as an
+    invoker function re-enters itself.
+  - A branch head is a `MANAGER` and nothing else (SCRUM-63 narrowed the SCRUM-61 rule): the picker on
+    `/branches` filters the directory through `isBranchHeadRole`, and `assertBranchManagerExists` answers `400`
+    (`BranchManagerRoleError`) for an employee *and for the organization's owner* — the owner stands above
+    every branch instead of running one. `heads_branch()` still accepts an owner so a legacy `manager_id`
+    keeps working, but it grants them nothing beyond `is_organization_owner()`, and the screen flags such a
+    branch as "cần gán quản lý chi nhánh" rather than pretending it is covered. Compare the role through
+    `lib/domain/roles.ts` only — never re-implement the test next to it.
+  - Editing a branch needs `branch:update` (a manager, their own branch); creating and deleting need
+    `branch:manage` (owner only). `branches_guard_manager_change` keeps `manager_id` an owner decision —
+    that column *is* the scope a manager holds, so a head editing it could hand the branch on or take a
+    second one. `branches_guard_delete` refuses a branch that still has attendance, schedule, facility or
+    revenue rows (the API answers the same `409` with the counts): the cascades would otherwise delete
+    operational history silently, and `daily_revenue.branch_id` has no foreign key at all.
+  - The screens show the restriction rather than a `403` a click away: a branch the caller does not head is
+    a `disabled` option ("— chỉ xem") in every picker whose value is the target of a write (the revenue
+    picker, the schedule and facility modals) and reads **Chỉ xem** in the row actions (branch, shift,
+    attendance, facility, request). Read filters stay usable on purpose — reading is not managing.
+- `requests_request_type_check` is a hand-made dashboard constraint, and neither PostgREST nor the app can
+  read it (the root OpenAPI wants a secret key; PostgREST exposes columns and foreign keys, never a check
+  definition). A vocabulary mismatch therefore stays invisible until an insert happens, and then the route
+  can only answer `500 ... violates check constraint "requests_request_type_check"` — a schema mismatch
+  wearing the costume of a server bug. `SCRUM-62_request_type_constraint.sql` prints the old definition and
+  replaces it with the four values `REQUEST_TYPES` sends; **keep that `in (...)` list and `REQUEST_TYPES`
+  identical**, because `request_type` is stored *and displayed* verbatim (the queue, the dashboard and quick
+  search all read the column as-is, so machine codes would surface in the UI).
+- Employee ↔ branch (SCRUM-63) is the fourth axis of the role model, and it lives in the same three places:
+  - `users.branch_id` (nullable) is the branch an account belongs to; `null` means "belongs to no branch".
+    It is not `branches.manager_id`: that column says who *runs* a branch (and is what `heads_branch()`
+    reads for writes), this one says where somebody *works*. A manager may have either, both or neither.
+  - `public.current_branch_id()` is the helper the policies read. It must stay `security definer` with
+    `set search_path = public` (SCRUM-54's rule) and must never be inlined as `select … from public.users`
+    into a policy on `users`.
+  - The read policies of `branches`, `requests`, `attendance` and `shift_assignments` keep every SCRUM-53/60
+    clause and add the branch test to the **employee half only** (`is_organization_manager()` still comes
+    first, so a manager reads the whole organization); `requests_insert_own` and `attendance_insert_own` add
+    the same test to their `with check`. An unassigned employee therefore reads nothing branch-scoped, files
+    no đơn and checks in nowhere — that is the point of the feature, not a bug to "fix" by widening a policy.
+  - `CreateRequestUseCase` answers `403` before the insert (`RequestBranchNotAssignedError` /
+    `RequestBranchForbiddenError`) so the caller reads a sentence instead of a policy that matched no row, and
+    `/requests` hides "Tạo đơn" for an unassigned account rather than offering a click that must fail.
+  - The organization's `OWNER` files no đơn at all: `request:create` is filtered out of
+    `OWNER_CAPABILITIES` in `lib/accessPolicy.ts` (so `POST /api/requests` answers `403` for them) and
+    `/requests` renders no "Tạo đơn". They review every queue instead — `ReviewRequestUseCase` keeps its
+    owner exception only for a *legacy* request an owner filed before this rule, which nobody else could
+    decide anyway.
+  - Nobody reviews their own đơn: `ReviewRequestUseCase` throws `RequestSelfReviewError` when the request is
+    the approver's own — except for the organization's `OWNER`, whose own request nobody else could decide.
+    `/requests` shows "Đơn của bạn" instead of the buttons for the same case (owner excepted).
+  - Assignment is owner-only and rides on the existing `users_update_owners` policy through
+    `PATCH /api/users/{id}` (`branch_id` omitted keeps the current branch, `null` unassigns). The column is
+    readable by every member of the organization via `users_select_authenticated` (SCRUM-24) — a name next to
+    a branch is not PII.
+  - The organization's `OWNER` is never attached to a branch: `/staff` renders a locked "Không gán chi nhánh"
+    cell for them, `toDraft`/`storedBranchId` keep a legacy `branch_id` out of the payload (so a save clears
+    it instead of storing it), and `UpdateStaffUseCase` answers `400` ("You cannot assign a branch to the
+    organization's owner.") for a branch on an owner while forcing `null` when somebody is *promoted* to
+    `OWNER`. A `MANAGER` gets no picker either — their scope is `branches.manager_id`, and the row shows
+    what they *head* ("Phụ trách: …") as plain grey text, since `is_organization_manager()` already grants
+    them the whole organization. `users.branch_id` is therefore edited **only for an `EMPLOYEE`**, and the
+    payload omits it for every other role (omitted keeps the stored value, per the API's contract) which is
+    why the amber "Chưa gán: không thấy ca, bảng công hay gửi được đơn" warning is reserved for an
+    `EMPLOYEE` as well.
+  - **Deploy order: `SCRUM-62` and `SCRUM-63` before the build that ships them.** `GET /api/auth/session`
+    selects `users.branch_id`, so on a database that lacks the column *every* authenticated route answers
+    `500` with `column users.branch_id does not exist`. Unlike `is_active`, this column is not one the app
+    can skip reading, because the shell has to know the caller's branch.
 - Rewriting a policy must only ever *add* to the original condition. Re-creating one from memory and
   dropping a clause (`status = 'PENDING'`, `employee_id = auth.uid()`, the role check) is a silent
   security regression that no typecheck or lint will catch — read the previous definition first, and
@@ -361,12 +505,28 @@ that must not live in SQL).
   it only through `EdgeFunctionStaffProvisioningService`, forwarding the caller's access token; the
   service-role key exists solely in that function's Supabase secrets and must never appear in this
   repository or in a client.
+- `POST /api/organizations/accounts` answers `409` for two unrelated conflicts, so read the body rather
+  than the status: `This account is already a member of the organization.` comes from the register row
+  being *claimed*, while `An account already exists for this email address.` comes from `auth.users`
+  already holding that address. The app keeps that distinction instead of collapsing it:
+  `EdgeFunctionStaffProvisioningService` forwards the function's own sentence into
+  `StaffAccountEmailTakenError` (its constructor takes it) and `/organization` matches
+  `MEMBER_CONFLICT_MARKER` exported from that file, so reword neither side alone — and never write the
+  marker into a catch-all sentence, which is exactly how every `409` once rendered as "đã là thành
+  viên" for an address that was merely `Chờ vào tổ chức`. The second case is invisible in
+  `public.users` whenever the SCRUM-50 `on_auth_user_created` trigger was missing when the account was
+  made (the function then fails its own profile check with `500` and leaves an auth user behind), which
+  is what makes a retry look like a phantom conflict — apply `SCRUM-50_user_registration.sql`, delete
+  the leftover auth user, then create it again. `/organization` keeps this outcome on the provisioning
+  form itself (`accountError` / `accountNote`) instead of the page-level banner: that banner renders
+  above the summary cards, so an error raised while the form is in view is off-screen and reads as
+  "nothing happened" — the owner clicks again, and the second attempt is the `409`.
 - `lib/publicPaths.ts` has two lists: `PUBLIC_PATHS` (no session needed — `proxy.ts` redirects a
   signed-in visitor away) and `SHELL_LESS_PATHS` (`/onboarding`, `/change-password`: a session is
   required, the navigation is hidden because every link would bounce back, the header stays so the
   account can sign out).
   lets any signed-in account read the directory (id, name, role, `is_active`, `created_at` — nothing else),
-  `users_update_managers` limits writes to `OWNER`/`CHU`, and `UpdateStaffUseCase` adds the rules the database
+  `users_update_managers` limits writes to `OWNER`/`MANAGER`, while `UpdateStaffUseCase` (SCRUM-59) adds the rules the database
   cannot express (only an `OWNER` touches the `OWNER` role; nobody edits their own row). Accounts are still
   created by signing up — a service-role admin API is deliberately not used.
 - The chat module reads exactly two tables — `company_documents` (`id, content, embedding, title,
@@ -376,6 +536,33 @@ that must not live in SQL).
   the model is forbidden to invent one. `GET /api/chat/sources` + the "Nguồn tri thức" panel on `/chat`
   exist so that this is visible in the product instead of being guessed at. Embed chunks with
   `gemini-embedding-001` pinned to **768 dims** to match those `vector(768)` columns.
+- Branch coordinates are guarded twice, on purpose. `lib/geo/vietnam.ts` `isInsideVietnam()` is the real
+  rule (point-in-polygon over `lib/geo/vietnamOutline.ts`, plus a 2 km coastal band so a GPS fix just off the
+  drawn coastline is not refused) and is what `app/api/branches/_lib/branchRequest.ts` and the map picker
+  call; `branches_vietnam_bounds_check` (SCRUM-57) only knows the country's envelope, because a CHECK
+  constraint cannot do point-in-polygon without PostGIS. `lib/geo/vietnamOutline.ts` is **generated** by
+  `scripts/extract-vietnam-outline.mjs` (Natural Earth 1:10m, a ~13 MB download — manual, deliberately not
+  wired into `predev`/`prebuild`): regenerate it through that script, never by hand, and keep
+  `VIETNAM_BOUNDS` the outline's envelope padded by 0.022° (~2.2 km, more than that band) — a tighter
+  box would make the database refuse a coordinate the API had accepted.
+- `branches.manager_id` is picked from the SCRUM-24 directory (`GET /api/users` without `id`, `OWNER`/`MANAGER`
+  only — SCRUM-59 `directory:view`) and never typed: `CreateBranchUseCase`/`UpdateBranchUseCase` run `assertBranchManagerExists` on it,
+  and because that profile read goes through the request-scoped client, a manager from another organization
+  — or an id that does not exist — is refused with `BranchManagerNotFoundError` → `400` instead of an opaque
+  foreign-key failure. A viewer without `directory:view` gets `403` from the directory and so sees
+  `Đã gán`/`Chưa gán` rather than a name; that degradation is intended, not a bug.
+- The address field on `/branches` is filled by `GET /api/geo/reverse`, the only outbound HTTP call besides
+  Gemini: the route proxies Nominatim (OpenStreetMap — the same project as the map tiles) so that no key is
+  needed and the app can identify itself through a User-Agent, which that provider's usage policy requires.
+  Keep it at one lookup per pin move (the policy allows one request per second, so never wire it to a
+  keystroke) and keep it server-side: the route is what applies `isInsideVietnam`, so it cannot turn into a
+  free geocoding proxy for coordinates anywhere else in the world.
+- `components/LocationPickerMap.tsx` is the only client-side map: a `next/dynamic({ ssr: false })` wrapper
+  around `components/LocationPickerMapCanvas.tsx`, because Leaflet touches `window` while its module is
+  evaluated and pulls in the outline. Colours are set with Tailwind classes on the SVG paths rather than
+  through `pathOptions` — Leaflet writes an inline presentation attribute that outranks the token — and the
+  dimmed "outside Vietnam" area is one polygon whose holes are the outline rings, which only works because
+  Leaflet fills with `fill-rule: evenodd`.
 - Attendance is split by device: the mobile app inserts the check-in (GPS point, photo) and the web app
   only reviews it. `attendance_guard_self_update` (SCRUM-21) therefore blocks an employee from editing
   their own check-in facts even though RLS lets them complete the record — do not "fix" that by widening
@@ -393,6 +580,22 @@ that must not live in SQL).
   Chưa có test runner trong dự án; `npm run lint` còn lỗi tồn đọng nên chỉ lint các file mình sửa.
 - Mọi route API phải có khối JSDoc `@swagger`; schema dùng chung khai báo trong `lib/swagger.ts`,
   file `public/swagger.json` là file sinh tự động, không sửa tay.
+- Phân quyền ba cấp (SCRUM-59/60): `OWNER` / `MANAGER` / `EMPLOYEE` (giá trị cũ `CHU` được
+  `normalizeRole` quy về `MANAGER`). Bảng năng lực & bảng màn hình ở `lib/accessPolicy.ts`; route handler
+  bắt đầu bằng `requireCapability("…")` từ `app/api/_lib/requireCaller.ts`; trang ẩn nút bằng
+  `useProfile().can(…)`; RLS (`is_organization_manager()` / `is_organization_owner()`) là lớp quyết định.
+  Thứ tự triển khai: `SCRUM-59` → app + Edge Function `staff-account` → `SCRUM-60`.
+- Phạm vi chi nhánh (SCRUM-61): trưởng chi nhánh (`branches.manager_id`) chỉ quản lý chi nhánh của mình.
+  Quy tắc nằm ở `lib/domain/branchScope.ts` (`canManageBranch`, `defaultBranchId`) và
+  `lib/usecases/branchScope.ts` (`assertBranchManagedBy` → `403`); RLS dùng helper `public.heads_branch()`
+  (`security definer`) trong policy ghi của `branches`, `daily_revenue`, `shift_assignments`, `attendance`,
+  `facilities`, `requests`. Tạo/xoá chi nhánh thuộc `OWNER` (`branch:manage`), sửa chi nhánh mình thuộc
+  `branch:update`, và xoá chỉ thành công khi chi nhánh không còn dữ liệu (`409` kèm số lượng).
+- Nhân viên thuộc một chi nhánh (SCRUM-63): `users.branch_id` + helper `public.current_branch_id()`;
+  RLS thu hẹp phần **nhân viên** trong policy đọc của `branches`/`requests`/`attendance`/`shift_assignments`
+  vào chi nhánh của họ, và chặn gửi đơn / chấm công khi `branch_id` còn `null`. Gán chi nhánh ở `/staff`
+  (chỉ chủ sở hữu); không ai tự duyệt đơn của mình, trừ chủ sở hữu. Chạy `SCRUM-62` (ràng buộc
+  `request_type`) và `SCRUM-63` **trước** khi deploy build này — `GET /api/auth/session` đọc cột mới.
 - Thay đổi CSDL viết thành file SQL mới trong `supabase/sql/` và chạy thủ công trong Supabase SQL Editor;
   không sửa file đã chạy.
 - Thời gian nghiệp vụ theo `Asia/Bangkok` (UTC+7), dữ liệu lưu ở UTC; không tự ý đổi múi giờ.

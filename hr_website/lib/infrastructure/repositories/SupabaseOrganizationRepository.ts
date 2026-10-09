@@ -74,7 +74,7 @@ export class SupabaseOrganizationRepository implements IOrganizationRepository {
 
   async findJoinCode(): Promise<string | null> {
     const supabase = await createSupabaseServerClient();
-    // The policy gives this table to OWNER/CHU of the organization, so an employee gets null.
+    // The policy gives this table to the organization's OWNER (SCRUM-59), so anybody else gets null.
     const { data, error } = await supabase
       .from("organization_join_codes")
       .select("code")
@@ -140,7 +140,7 @@ export class SupabaseOrganizationRepository implements IOrganizationRepository {
       throw new Error(`Unable to rename the organization: ${error.message}`);
     }
 
-    // The update policy requires OWNER/CHU, so a blocked update and a wrong id look the same.
+    // The update policy requires the organization's OWNER, so a blocked update and a wrong id look the same.
     if (!data) {
       throw new OrganizationNotFoundError();
     }

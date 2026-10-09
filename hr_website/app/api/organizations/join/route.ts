@@ -8,8 +8,8 @@
  *       must be true, and the database checks both: the code must match `organization_join_codes`,
  *       and the caller's email must be on that organization's register (`organization_invites`) and
  *       unclaimed. An outsider who obtains the code therefore gets `403` — this is the point of the
- *       invite list. Ten failed attempts per hour are refused with `429`. A `CHU` invite grants the
- *       manager role; an invite can never mint an OWNER.
+ *       invite list. Ten failed attempts per hour are refused with `429`. A `MANAGER` invite grants
+ *       the manager role; an invite can never mint an OWNER.
  *     tags:
  *       - Organizations
  *     requestBody:
@@ -75,7 +75,7 @@ import { SupabaseOrganizationRepository } from "@/lib/infrastructure/repositorie
 import { GetCurrentOrganizationUseCase } from "@/lib/usecases/GetCurrentOrganizationUseCase";
 import { JoinOrganizationUseCase } from "@/lib/usecases/JoinOrganizationUseCase";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCaller } from "@/app/api/_lib/requireCaller";
 
 export async function POST(request: Request) {
   let body: { code?: unknown };
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     await joinOrganization.execute({ code: body.code });
 
     // Same shape as GET /api/organizations/current, so the screen can paint the organization
-    // (and, for a CHU, the code) without a second round trip.
+    // (and, for the owner, the code) without a second round trip.
     const getCurrent = new GetCurrentOrganizationUseCase(
       organizationRepository,
       new SupabaseOrganizationInviteRepository(),

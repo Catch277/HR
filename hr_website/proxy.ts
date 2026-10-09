@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { canAccessScreen, firstAccessiblePath } from "@/lib/accessPolicy";
 import { isPublicPath } from "@/lib/publicPaths";
 
 /** Screens that belong to onboarding: reachable while the account has no organization yet. */
@@ -10,6 +11,11 @@ const CHANGE_PASSWORD_PATH = "/change-password";
 type MembershipState = {
   organizationId: string | null;
   mustChangePassword: boolean;
+  /**
+   * `users.role`, kept raw: a database that has not run `SCRUM-59_role_model.sql` still answers the
+   * pre-rename `CHU`, and `canAccessScreen` normalises it through `lib/domain/roles.ts`.
+   */
+  role: string | null;
 };
 
 /**
@@ -17,6 +23,9 @@ type MembershipState = {
  * when that row — or the columns this script adds — is not there yet, and both gates are skipped in
  * that case: blocking every screen because a script has not been applied would be worse than the
  * behaviour before the gate existed.
+ *
+ * `role` joined that read with SCRUM-59, which is what lets the same query also answer "may this
+ * account open this screen?".
  */
 async function loadMembershipState(
   supabase: ReturnType<typeof createServerClient>,
@@ -24,7 +33,7 @@ async function loadMembershipState(
 ): Promise<MembershipState | null> {
   const { data, error } = await supabase
     .from("users")
-    .select("organization_id, must_change_password")
+    .select("organization_id, must_change_password, role")
     .eq("id", userId)
     .maybeSingle();
 
@@ -35,11 +44,13 @@ async function loadMembershipState(
   const row = data as {
     organization_id: string | null;
     must_change_password: boolean | null;
+    role: string | null;
   };
 
   return {
     organizationId: row.organization_id ?? null,
     mustChangePassword: row.must_change_password === true,
+    role: row.role ?? null,
   };
 }
 
@@ -116,6 +127,21 @@ export async function proxy(request: NextRequest) {
       ) {
         // Both onboarding screens are done with; the shell is the right place now.
         return NextResponse.redirect(new URL("/", request.url));
+      }
+
+      // SCRUM-59: the same table the sidebar reads decides whether this path is the caller's at all.
+      // A deep link into a screen the role may not open lands on the first screen it *can* open,
+      // instead of rendering a page whose every request would answer 403. `firstAccessiblePath` can
+      // never name a path that was just refused, so this cannot loop, and an unrecognised role is
+      // let through exactly like the gates above when their data is unavailable.
+      const fallback = firstAccessiblePath(state.role);
+
+      if (
+        state.role &&
+        !canAccessScreen(state.role, pathname) &&
+        fallback !== pathname
+      ) {
+        return NextResponse.redirect(new URL(fallback, request.url));
       }
     }
   }

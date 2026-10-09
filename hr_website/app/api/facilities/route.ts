@@ -34,6 +34,12 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not read the inventory (SCRUM-59, manager and above).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       500:
  *         description: An unexpected server error occurred.
  *         content:
@@ -42,7 +48,7 @@
  *               $ref: '#/components/schemas/ErrorResponse'
  *   post:
  *     summary: Create a facility
- *     description: Registers one facility of a branch. Restricted to OWNER/CHU accounts by RLS.
+ *     description: Registers one facility of a branch. Restricted to managers (`facility:manage`, SCRUM-59) and enforced by RLS.
  *     tags:
  *       - Facilities
  *     requestBody:
@@ -70,6 +76,14 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not manage facilities (SCRUM-59), or they do not head that branch (SCRUM-61).
+ *       404:
+ *         description: The branch does not exist or is not visible to the caller.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       500:
  *         description: An unexpected server error occurred.
  *         content:
@@ -79,21 +93,14 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { SupabaseFacilityRepository } from "@/lib/infrastructure/repositories/SupabaseFacilityRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { CreateFacilityUseCase } from "@/lib/usecases/CreateFacilityUseCase";
 import { ListFacilitiesUseCase } from "@/lib/usecases/ListFacilitiesUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 import { UUID_PATTERN, parseFacilityRequest } from "@/app/api/facilities/_lib/facilityRequest";
-
-async function requireUserId(): Promise<string | null> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  return error || !user ? null : user.id;
-}
 
 export async function GET(request: NextRequest) {
   const branchId = request.nextUrl.searchParams.get("branch_id") ?? undefined;
@@ -106,11 +113,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    if (!(await requireUserId())) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    // The inventory is a management view (SCRUM-59): the guard answers 403 for an employee and
+    // `facilities_select_authenticated` narrows the rows in the database as well.
+    const caller = await requireCapability("facility:manage");
+
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const listFacilities = new ListFacilitiesUseCase(
@@ -144,20 +152,33 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (!(await requireUserId())) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    const caller = await requireCapability("facility:manage");
+
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const createFacility = new CreateFacilityUseCase(
       new SupabaseFacilityRepository(),
+      new SupabaseBranchRepository(),
     );
-    const facility = await createFacility.execute(parsed.input);
+    const facility = await createFacility.execute({
+      ...parsed.input,
+      // SCRUM-61: the inventory belongs to a branch, so the caller has to head it.
+      callerId: caller.userId,
+      callerRole: caller.role,
+    });
 
     return NextResponse.json(facility, { status: 201 });
   } catch (error) {
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+
     console.error("Failed to create facility", error);
     return NextResponse.json(
       { error: "Unable to create facility." },

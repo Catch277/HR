@@ -16,20 +16,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import ThemeToggle from "@/components/ThemeToggle";
+import { useProfile } from "@/components/ProfileProvider";
+import { roleLabel } from "@/lib/accessPolicy";
 import type { QuickSearchResult } from "@/lib/domain/entities/QuickSearch";
 import { isPublicPath } from "@/lib/publicPaths";
-
-type UserProfile = { id: string; full_name: string; role: string };
 
 /** `GET /api/search` cần tối thiểu 2 ký tự; dưới ngưỡng đó chỉ hiện gợi ý, không gọi API. */
 const MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 250;
-
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: "Chủ sở hữu",
-  CHU: "Quản lý chi nhánh",
-  EMPLOYEE: "Nhân viên",
-};
 
 const REQUEST_STATUS_LABELS: Record<string, string> = {
   PENDING: "Chờ duyệt",
@@ -68,7 +62,7 @@ function toHits(results: QuickSearchResult | null): SearchHit[] {
       id: `user-${user.id}`,
       group: "users" as const,
       title: user.full_name,
-      subtitle: `${ROLE_LABELS[user.role] ?? user.role} · Quản lý nhân sự`,
+      subtitle: `${roleLabel(user.role)} · Quản lý nhân sự`,
       href: "/staff",
     })),
     ...results.requests.map((request) => ({
@@ -94,7 +88,8 @@ function toHits(results: QuickSearchResult | null): SearchHit[] {
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  // The profile is read once for the whole shell (SCRUM-59); the header only labels it.
+  const { profile } = useProfile();
   const [unreadCount, setUnreadCount] = useState(0);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickSearchResult | null>(null);
@@ -106,32 +101,6 @@ export default function Header() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const hits = toHits(results);
-
-  useEffect(() => {
-    // Public screens (login, register) have no session and no profile to show.
-    if (isPublicPath(pathname)) {
-      return;
-    }
-
-    let cancelled = false;
-
-    fetch("/api/auth/session", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: UserProfile | null) => {
-        if (!cancelled) {
-          setProfile(data);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProfile(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname]);
 
   useEffect(() => {
     if (isPublicPath(pathname)) {
@@ -487,7 +456,7 @@ export default function Header() {
               {profile?.full_name ?? "Đang tải..."}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-500">
-              {profile ? (ROLE_LABELS[profile.role] ?? profile.role) : "—"}
+              {profile ? roleLabel(profile.role) : "—"}
             </p>
           </div>
         </div>

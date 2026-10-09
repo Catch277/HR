@@ -1,6 +1,6 @@
 export class RequestReviewForbiddenError extends Error {
   constructor() {
-    super("Only an owner account can review requests.");
+    super("Only a manager (OWNER/MANAGER) may review requests.");
     this.name = "RequestReviewForbiddenError";
   }
 }

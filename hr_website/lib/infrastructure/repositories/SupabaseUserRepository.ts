@@ -7,10 +7,14 @@ import { StaffNotFoundError } from "@/lib/domain/errors/StaffNotFoundError";
 import type { IUserRepository } from "@/lib/domain/repositories/IUserRepository";
 import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 
-/** The session profile deliberately excludes `is_active` (see StaffMember). */
-const USER_COLUMNS = "id, full_name, role";
+/**
+ * The session profile deliberately excludes `is_active` (see StaffMember); it does carry the branch,
+ * which SCRUM-63 needs in the shell (and means `SCRUM-63_employee_branch.sql` must be applied before
+ * this build ships).
+ */
+const USER_COLUMNS = "id, full_name, role, branch_id";
 
-const STAFF_COLUMNS = "id, full_name, role, is_active, created_at";
+const STAFF_COLUMNS = "id, full_name, role, is_active, created_at, branch_id";
 
 type StaffRow = {
   id: string;
@@ -18,6 +22,7 @@ type StaffRow = {
   role: string;
   is_active: boolean;
   created_at: string;
+  branch_id: string | null;
 };
 
 function toStaffMember(row: StaffRow): StaffMember {
@@ -27,6 +32,7 @@ function toStaffMember(row: StaffRow): StaffMember {
     role: row.role,
     is_active: row.is_active,
     created_at: row.created_at,
+    branch_id: row.branch_id,
   };
 }
 
@@ -66,7 +72,13 @@ export class SupabaseUserRepository implements IUserRepository {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
       .from("users")
-      .update({ role: input.role, is_active: input.isActive })
+      .update({
+        role: input.role,
+        is_active: input.isActive,
+        // SCRUM-63: the branch an employee belongs to. `null` is a valid value — it means "chưa gán
+        // chi nhánh", which is what keeps the account out of every branch-scoped read.
+        branch_id: input.branchId ?? null,
+      })
       .eq("id", id)
       .select(STAFF_COLUMNS)
       .maybeSingle();

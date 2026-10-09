@@ -6,7 +6,7 @@
  *     description: |
  *       SCRUM-52: probes the `staff-account` Edge Function with the caller's own token and reports
  *       *why* it is unusable, not merely that it is. `reason` separates "not deployed" (an operator
- *       task) from "not allowed" (this account is not OWNER/CHU of an organization), "unauthenticated"
+ *       task) from "not allowed" (this account is not the organization's OWNER), "unauthenticated"
  *       (the function refused the session token) and "misconfigured" (deployed but answering 5xx, for
  *       example missing secrets). The Tổ chức screen offers the provisioning form only for `ready`.
  *     tags:
@@ -48,7 +48,7 @@
  *       to create a real Supabase Auth account for a colleague, with the temporary password the
  *       owner typed. The account is added to the organization's register (`source = provisioned`)
  *       and must change that password on first sign-in; it then joins with the organization code
- *       like any other invited account. OWNER/CHU of the organization only.
+ *       like any other invited account. OWNER of the organization only (SCRUM-59 `organization:manage`).
  *     tags:
  *       - Organizations
  *     requestBody:
@@ -68,7 +68,7 @@
  *                 nullable: true
  *               role:
  *                 type: string
- *                 enum: [EMPLOYEE, CHU]
+ *                 enum: [EMPLOYEE, MANAGER]
  *                 default: EMPLOYEE
  *               password:
  *                 type: string
@@ -100,7 +100,11 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: The email already has an account or already belongs to the organization.
+ *         description: |-
+ *           The email already has an account or already belongs to the organization. The two causes are
+ *           told apart by `error`, which carries the `staff-account` function's own sentence: "already a
+ *           member" means the register row is claimed, anything else means the address merely has its own
+ *           Supabase Auth login and can join with the code instead of being provisioned again.
  *         content:
  *           application/json:
  *             schema:
@@ -130,10 +134,11 @@ import { EdgeFunctionStaffProvisioningService } from "@/lib/infrastructure/EdgeF
 import { GetStaffProvisioningAvailabilityUseCase } from "@/lib/usecases/GetStaffProvisioningAvailabilityUseCase";
 import { ProvisionStaffAccountUseCase } from "@/lib/usecases/ProvisionStaffAccountUseCase";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 export async function GET() {
-  const caller = await requireCaller();
+  // The provisioning probe belongs to the owner's screen (SCRUM-59) — a manager does not create accounts.
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;
@@ -197,7 +202,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "role must be a string." }, { status: 400 });
   }
 
-  const caller = await requireCaller();
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;

@@ -5,8 +5,8 @@
  *     summary: Record a complaint against an attendance record
  *     description: |
  *       Stores the employee's khiếu nại (SCRUM-29) with the current timestamp. The employee on
- *       the record may raise it themselves, and an OWNER/CHU manager may raise it for them (the
- *       complaint usually arrives by phone); anyone else is refused with `403`.
+ *       the record may raise it themselves, and a manager (OWNER/MANAGER) may raise it for them
+ *       (the complaint usually arrives by phone); anyone else is refused with `403`.
  *     tags:
  *       - Attendance
  *     requestBody:
@@ -46,13 +46,13 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
- *         description: The caller is neither the employee on the record nor an OWNER/CHU manager.
+ *         description: The caller is neither the employee on the record nor a manager of that branch (SCRUM-61, a manager acts only for the branch they head).
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: The attendance record does not exist.
+ *         description: The attendance record does not exist, or its branch is not visible to the caller.
  *         content:
  *           application/json:
  *             schema:
@@ -68,7 +68,10 @@ import { NextResponse } from "next/server";
 
 import { AttendanceComplaintForbiddenError } from "@/lib/domain/errors/AttendanceComplaintForbiddenError";
 import { AttendanceNotFoundError } from "@/lib/domain/errors/AttendanceNotFoundError";
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { SupabaseAttendanceRepository } from "@/lib/infrastructure/repositories/SupabaseAttendanceRepository";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { SupabaseUserRepository } from "@/lib/infrastructure/repositories/SupabaseUserRepository";
 import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { GetUserUseCase } from "@/lib/usecases/GetUserUseCase";
@@ -134,6 +137,7 @@ export async function POST(request: Request) {
 
     const recordComplaint = new RecordAttendanceComplaintUseCase(
       new SupabaseAttendanceRepository(),
+      new SupabaseBranchRepository(),
     );
     const record = await recordComplaint.execute({
       attendanceId: body.attendance_id,
@@ -150,6 +154,14 @@ export async function POST(request: Request) {
 
     if (error instanceof AttendanceComplaintForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     if (error instanceof Error && error.message.startsWith("complaint must")) {

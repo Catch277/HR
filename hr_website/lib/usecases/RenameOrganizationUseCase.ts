@@ -2,8 +2,7 @@ import type { Organization } from "@/lib/domain/entities/Organization";
 import { OrganizationForbiddenError } from "@/lib/domain/errors/OrganizationForbiddenError";
 import { OrganizationNotFoundError } from "@/lib/domain/errors/OrganizationNotFoundError";
 import type { IOrganizationRepository } from "@/lib/domain/repositories/IOrganizationRepository";
-
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
+import { isOwnerRole } from "@/lib/domain/roles";
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 120;
 
@@ -18,7 +17,7 @@ export class RenameOrganizationUseCase {
   ) {}
 
   async execute(input: RenameOrganizationInput): Promise<Organization> {
-    if (!MANAGER_ROLES.has(input.callerRole.trim().toUpperCase())) {
+    if (!isOwnerRole(input.callerRole)) {
       throw new OrganizationForbiddenError();
     }
 

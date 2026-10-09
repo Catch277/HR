@@ -3,7 +3,7 @@
  * /api/schedules/{id}:
  *   put:
  *     summary: Update a shift assignment
- *     description: Replaces the employee, branch, template, date, status and note of one assignment. Answers 409 on an overlap and 404 for an unknown or non-updatable row. SCRUM-30.
+ *     description: Replaces the employee, branch, template, date, status and note of one assignment. Answers 409 on an overlap and 404 for an unknown or non-updatable row. Restricted to managers (`schedule:manage`, SCRUM-59). SCRUM-30.
  *     tags:
  *       - Schedules
  *     parameters:
@@ -38,6 +38,12 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not write the schedule (SCRUM-59), or they do not head the branch the shift belongs to (SCRUM-61).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: The assignment or the referenced shift template was not found.
  *         content:
@@ -58,7 +64,7 @@
  *               $ref: '#/components/schemas/ErrorResponse'
  *   delete:
  *     summary: Delete a shift assignment
- *     description: Removes one assignment from the schedule. Restricted to OWNER/CHU accounts by RLS. SCRUM-30.
+ *     description: Removes one assignment from the schedule. Restricted to managers (`schedule:manage`, SCRUM-59) and enforced by RLS. SCRUM-30.
  *     tags:
  *       - Schedules
  *     parameters:
@@ -92,6 +98,12 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not write the schedule (SCRUM-59), or they do not head the branch the shift belongs to (SCRUM-61).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: The assignment does not exist or is not deletable by the caller.
  *         content:
@@ -107,14 +119,17 @@
  */
 import { NextResponse } from "next/server";
 
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { ShiftAssignmentNotFoundError } from "@/lib/domain/errors/ShiftAssignmentNotFoundError";
 import { ShiftNotFoundError } from "@/lib/domain/errors/ShiftNotFoundError";
 import { ShiftOverlapError } from "@/lib/domain/errors/ShiftOverlapError";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { SupabaseShiftAssignmentRepository } from "@/lib/infrastructure/repositories/SupabaseShiftAssignmentRepository";
 import { SupabaseShiftRepository } from "@/lib/infrastructure/repositories/SupabaseShiftRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { DeleteShiftAssignmentUseCase } from "@/lib/usecases/DeleteShiftAssignmentUseCase";
 import { UpdateShiftAssignmentUseCase } from "@/lib/usecases/UpdateShiftAssignmentUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 import {
   UUID_PATTERN,
   parseScheduleRequest,
@@ -148,24 +163,23 @@ export async function PUT(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const caller = await requireCapability("schedule:manage");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const updateAssignment = new UpdateShiftAssignmentUseCase(
       new SupabaseShiftAssignmentRepository(),
       new SupabaseShiftRepository(),
+      new SupabaseBranchRepository(),
     );
-    const assignment = await updateAssignment.execute(id, parsed.input);
+    const assignment = await updateAssignment.execute(id, {
+      ...parsed.input,
+      // SCRUM-61: both the stored branch and the one it would move to have to be the caller's.
+      callerId: caller.userId,
+      callerRole: caller.role,
+    });
 
     return NextResponse.json(assignment);
   } catch (error) {
@@ -178,6 +192,14 @@ export async function PUT(
 
     if (error instanceof ShiftOverlapError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     console.error("Failed to update shift assignment", error);
@@ -202,27 +224,33 @@ export async function DELETE(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const caller = await requireCapability("schedule:manage");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const deleteAssignment = new DeleteShiftAssignmentUseCase(
       new SupabaseShiftAssignmentRepository(),
+      new SupabaseBranchRepository(),
     );
-    await deleteAssignment.execute(id);
+    await deleteAssignment.execute(id, {
+      // SCRUM-61: the stored row's branch decides whether this manager may remove it.
+      userId: caller.userId,
+      role: caller.role,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof ShiftAssignmentNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
 

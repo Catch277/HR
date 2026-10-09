@@ -22,7 +22,7 @@ worker.
 | `/schedules`       | Lịch làm việc        | Weekly shift schedule: assign an employee to a shift template per day (SCRUM-30) |
 | `/employee-status` | Trạng thái nhân viên | Live roster: đang làm, chưa vào ca, nghỉ phép, đã tan ca, không có ca (SCRUM-22) |
 | `/attendance`      | Bảng công            | Timesheet review: giờ vào/ra, vị trí theo bán kính chi nhánh, sửa giờ, khiếu nại (SCRUM-21/22/23/29) |
-| `/staff`           | Quản lý nhân sự      | Staff administration: roles, cho nghỉ việc / kích hoạt lại (SCRUM-24)           |
+| `/staff`           | Quản lý nhân sự      | Staff administration: roles, gán chi nhánh làm việc, cho nghỉ việc / kích hoạt lại (SCRUM-24/63) |
 | `/organization`    | Tổ chức              | Organization home: join code, the register of accounts, tạo tài khoản có mật khẩu tạm (SCRUM-51/52). Reached from onboarding and from the organization card in the sidebar — deliberately not a navigation tab |
 | `/onboarding`      | Bắt đầu              | Create an organization or join one with its code — where an account with no organization lands (SCRUM-51) |
 | `/reports`         | Báo cáo              | Revenue reporting and analysis screen (SCRUM-44 provides the aggregation API)   |
@@ -45,6 +45,7 @@ next to them; see "Header" further down.
 | Supabase client   | `@supabase/ssr` request-scoped server client (App Router cookies)                      |
 | AI assistant      | `@google/generative-ai` — `gemini-embedding-001` embeddings (768 dims) + `gemini-3.5-flash` answers |
 | Styling           | Tailwind CSS v4 (`@tailwindcss/postcss`), `lucide-react`, Be Vietnam Pro font          |
+| Map picker        | `leaflet` + `react-leaflet` (client-only, OpenStreetMap tiles) for the branch GPS picker |
 | API documentation | `next-swagger-doc` from JSDoc `@swagger` blocks + `swagger-ui-react`                   |
 | Tooling           | npm, ESLint 9 (`eslint-config-next`), `tsx` for generator scripts                      |
 
@@ -63,7 +64,7 @@ lib/usecases/*UseCase.ts   Use case        business rules; depends on interfaces
 lib/domain/**              Domain          entities (snake_case), I*Repository / ILLMService, typed errors
         ▲ implements
         │
-lib/infrastructure/**      Infrastructure  Supabase*Repository, GeminiLLMService, supabaseClient
+lib/infrastructure/**      Infrastructure  Supabase*Repository, GeminiLLMService, NominatimReverseGeocodingService, supabaseClient
 ```
 
 - A use case never imports Next.js or Supabase; a repository never contains business rules.
@@ -86,18 +87,23 @@ hr_website/
 │   │                             (+ dashboard at app/page.tsx)
 │   ├── layout.tsx                Root layout: Be Vietnam Pro font + the Sidebar/Header shell
 │   └── globals.css
-├── components/                   Header.tsx (quick search + session user + sign-out), Sidebar.tsx (navigation)
+├── components/                   Header.tsx (quick search + session user + sign-out), Sidebar.tsx (navigation),
+│                                 LocationPickerMap.tsx (Leaflet picker, lazy) + LocationPickerMapCanvas.tsx
 ├── proxy.ts                      Route protection + Supabase session refresh (Next.js 16 proxy, née middleware)
 ├── lib/
 │   ├── domain/entities/          Plain interfaces; DB-backed fields stay snake_case
 │   ├── domain/errors/            Typed error classes (RevenueAlreadyDeclaredError, ...)
 │   ├── domain/repositories/      IRevenueRepository, INotificationRepository, ILLMService, ...
 │   ├── usecases/                 One class per business action + businessDay.ts (Asia/Bangkok helper)
-│   ├── infrastructure/           supabaseClient.ts, Supabase*Repository.ts, GeminiLLMService.ts
+│   ├── infrastructure/           supabaseClient.ts, Supabase*Repository.ts, GeminiLLMService.ts,
+│   │                             NominatimReverseGeocodingService.ts (branch address lookup)
 │   ├── publicPaths.ts            Screens that hide the shell (/login, /register) — see proxy.ts
+│   ├── geo/vietnamOutline.ts     Vietnam land outline (`[lat, lng]` rings) — generated, do not edit by hand
+│   ├── geo/vietnam.ts            isInsideVietnam() (point-in-polygon + a 2 km coastal tolerance band) + VIETNAM_BOUNDS
 │   └── swagger.ts                OpenAPI definition + shared component schemas
 ├── scripts/generate-swagger.ts   Writes public/swagger.json (runs via predev / prebuild)
 ├── scripts/ingest-knowledge.ts   Chunks docs/ → embeds → writes supabase/sql/knowledge_seed.sql
+├── scripts/extract-vietnam-outline.mjs  Natural Earth 1:10m → lib/geo/vietnamOutline.ts (manual regen)
 ├── docs/                         Source documents (.md/.txt) for the AI knowledge base
 ├── supabase/sql/                 Idempotent SQL scripts, applied by hand (see Database)
 ├── public/swagger.json           Generated — never edit by hand
@@ -160,45 +166,48 @@ Each route file documents itself with a JSDoc `@swagger` block.
 | `POST /api/auth/sign-up`             | public            | Supabase Auth + `users`       | Body `{ email, password, full_name }` → `201` `{ userId, email, emailConfirmationRequired }`; `409` when the email is taken, `400` on invalid input. The `users` profile row comes from the `SCRUM-50` trigger |
 | `POST /api/auth/sign-out`            | session           | Supabase Auth                 | Clears the session cookies; safe to call without an active session                                                                                   |
 | `GET /api/auth/session`              | session           | `users`                       | Profile of the signed-in account; `401` without a session, `404` when the account has no `users` row                                                 |
-| `POST /api/revenue/open`             | session           | `daily_revenue`               | Body `{ branch_id, open_amount }` → `201`; `409` if the branch already declared today; `400` on bad input                                            |
-| `PUT /api/revenue/close`             | session           | `daily_revenue`               | Body `{ branch_id, close_amount, close_note?, close_image_url? }` → `{ revenue, revenue_difference }`; `404` without an opening record               |
+| `POST /api/revenue/open`             | session           | `daily_revenue`               | Body `{ branch_id, open_amount }` → `201`; `409` if the branch already declared today; `400` on bad input; `403` unless the caller heads that branch (SCRUM-61)                                            |
+| `PUT /api/revenue/close`             | session           | `daily_revenue`               | Body `{ branch_id, close_amount, close_note?, close_image_url? }` — both optional fields are nullable and `null` clears them → `{ revenue, revenue_difference }`; `404` without an opening record; `403` unless the caller heads that branch (SCRUM-61) |
 | `GET /api/revenue/report`            | session           | RPC `get_revenue_report`      | `branch_id?`, `period=day\|week\|month\|quarter\|year` (default `day`), `date=YYYY-MM-DD`; returns series, summary and period-over-period comparison |
 | `GET /api/revenue`                   | session           | `daily_revenue`               | Row-level sibling of the report: `branch_id?`, `days=1..31` (default 7, Asia/Bangkok business days), `status=open\|closed\|all` → the records, newest first, capped at 100 |
 | `GET /api/requests`                  | session           | `requests`                    | Approval queue (SCRUM-41) with the requester name embedded; filters `status`, `branch_id` (the value `all` disables a filter)                        |
-| `PATCH /api/requests/{id}/review`    | session + role    | `requests`                    | `{ status: "APPROVED" \| "REJECTED", reject_reason? }` → the updated request; a reason is required to reject; `403` unless the caller is `OWNER`/`CHU` |
+| `POST /api/requests`                 | session + role    | `requests`                    | Body `{ branch_id, request_type, title, content? }` → `201` the stored request (still `PENDING`); `request_type` is one of `Nghỉ phép` / `Đổi ca` / `Điều chỉnh công` / `Khác` (`REQUEST_TYPES`), `content` may be omitted or `null`. Every member may file their own đơn (`request:create`) **except the organization's `OWNER`**, who reviews instead of filing (`403`); `requests_insert_own` forces `user_id = auth.uid()` with `status = PENDING`; `400` on bad input, `403` when the account owns no branch or files for another one (SCRUM-63), `404` for a branch outside the caller's organization |
+| `PATCH /api/requests/{id}/review`    | session + role    | `requests`                    | `{ status: "APPROVED" \| "REJECTED", reject_reason? }` → the updated request; a reason is required to reject; `403` unless the caller holds `request:review` (`OWNER`/`MANAGER`) and heads the request's branch (SCRUM-61; the owner reviews a request that lost its branch) |
 | `GET /api/shifts`                    | session           | `shifts` (catalogue)          | The shift templates (`Ca sáng` 08:00–17:00, ...) that `/api/schedules` assigns; `branch_id = null` means every branch                          |
 | `GET /api/schedules`                 | session           | `shift_assignments`           | Filters `branch_id`, `employee_id`, `start_date`, `end_date`; each row embeds the employee name and the shift hours                          |
-| `POST /api/schedules`                | session           | `shift_assignments`           | Body `{ employee_id, branch_id, shift_id, work_date, status?, note? }` → `201`; `409` when the employee already has an overlapping shift, `404` for an unknown template |
-| `PUT /api/schedules/{id}`            | session           | `shift_assignments`           | Replaces the editable fields of one assignment; `400` if `id` is not a UUID, `404` when missing, `409` on overlap                            |
-| `DELETE /api/schedules/{id}`         | session           | `shift_assignments`           | Removes one assignment (`404` when missing)                                                                                                 |
+| `POST /api/schedules`                | session           | `shift_assignments`           | Body `{ employee_id, branch_id, shift_id, work_date, status?, note? }` → `201`; `409` when the employee already has an overlapping shift, `404` for an unknown template; `403` unless the caller heads the branch being scheduled into (SCRUM-61) |
+| `PUT /api/schedules/{id}`            | session           | `shift_assignments`           | Replaces the editable fields of one assignment; `400` if `id` is not a UUID, `404` when missing, `409` on overlap; `403` unless the caller heads both the stored and the destination branch (SCRUM-61)                            |
+| `DELETE /api/schedules/{id}`         | session           | `shift_assignments`           | Removes one assignment (`404` when missing); `403` unless the caller heads that branch (SCRUM-61)                                                                                                 |
 | `GET /api/facilities`                | session           | `facilities`                  | Per-branch equipment, optionally filtered by `branch_id`                                                                                    |
-| `POST /api/facilities`               | session           | `facilities`                  | Body `{ branch_id, name, code?, category?, quantity?, condition?, last_checked_at?, note? }` → `201`; writes need an `OWNER`/`CHU` role (RLS) |
-| `PUT /api/facilities/{id}`           | session           | `facilities`                  | Replaces the editable fields of one facility; `404` when missing or not updatable                                                           |
-| `DELETE /api/facilities/{id}`        | session           | `facilities`                  | Retires a facility from the registry (`404` when missing)                                                                                   |
+| `POST /api/facilities`               | session + role    | `facilities`                  | Body `{ branch_id, name, code?, category?, quantity?, condition?, last_checked_at?, note? }` → `201`; writes need `facility:manage` (`OWNER`/`MANAGER`) and the caller must head that branch (SCRUM-61), which RLS repeats |
+| `PUT /api/facilities/{id}`           | session           | `facilities`                  | Replaces the editable fields of one facility; `404` when missing or not updatable; `403` unless the caller heads both the stored and the destination branch (SCRUM-61)                                                           |
+| `DELETE /api/facilities/{id}`        | session           | `facilities`                  | Retires a facility from the registry (`404` when missing); `403` unless the caller heads that branch (SCRUM-61)                                                                                   |
 | `GET /api/attendance`                | session           | `attendance`                  | Timesheet with the employee, the shift hours and the branch geofence embedded; filters `branch_id`, `employee_id`, `status`, `start_date`, `end_date` |
-| `POST /api/attendance/complaints`    | session           | `attendance`                  | Body `{ attendance_id, complaint }` → `201`; the employee on the record or an `OWNER`/`CHU` manager may raise it, anyone else gets `403`              |
-| `PATCH /api/attendance/{id}/verify`  | session + role    | `attendance`                  | Stamps `verified_by`/`verified_at` on one record (the web review action); `403` unless the caller is `OWNER`/`CHU`                                     |
-| `PATCH /api/attendance/{id}`         | session + role    | `attendance`                  | Sửa giờ: replaces giờ vào/ra, `status` and note, and stamps `corrected_by`/`corrected_at` with the mandatory `correction_reason`; `400` when giờ ra precedes giờ vào, `403` unless the caller is `OWNER`/`CHU` |
-| `PATCH /api/attendance/complaints/{id}` | session + role | `attendance`                  | Body `{ status: "RESOLVED" }` → closes an open khiếu nại and stamps `complaint_resolved_by`/`complaint_resolved_at`; `400` when the record has no complaint, `403` unless the caller is `OWNER`/`CHU` |
-| `GET /api/employee-status`           | session           | RPC `get_employee_status`     | One row per person for one business day (Asia/Bangkok), derived from the schedule + timesheet; filters `branch_id`, `work_date`                       |
+| `POST /api/attendance/complaints`    | session           | `attendance`                  | Body `{ attendance_id, complaint }` → `201`; the employee on the record or a manager of that branch may raise it (SCRUM-61), anyone else gets `403`              |
+| `PATCH /api/attendance/{id}/verify`  | session + role    | `attendance`                  | Stamps `verified_by`/`verified_at` on one record (the web review action); `403` unless the caller holds `attendance:review` (`OWNER`/`MANAGER`) and heads that branch (SCRUM-61) |
+| `PATCH /api/attendance/{id}`         | session + role    | `attendance`                  | Sửa giờ: replaces giờ vào/ra, `status` and note, and stamps `corrected_by`/`corrected_at` with the mandatory `correction_reason`; `400` when giờ ra precedes giờ vào, `403` unless the caller holds `attendance:review` and heads that branch (SCRUM-61) |
+| `PATCH /api/attendance/complaints/{id}` | session + role | `attendance`                  | Body `{ status: "RESOLVED" }` → closes an open khiếu nại and stamps `complaint_resolved_by`/`complaint_resolved_at`; `400` when the record has no complaint, `403` unless the caller holds `attendance:review` and heads that branch (SCRUM-61) |
+| `GET /api/employee-status`           | session + role    | RPC `get_employee_status`     | One row per person for one business day (Asia/Bangkok), derived from the schedule + timesheet; filters `branch_id`, `work_date`; `403` unless the caller holds `employee-status:view` (`OWNER`/`MANAGER`) |
 | `GET /api/notifications`             | session           | `notifications`               | Paginated: `page` (≥1), `page_size` (≤100, default 20), `unread=true` to keep only unread rows (which also makes `total` the exact unread count) → `{ data, total, page, page_size }` |
 | `PATCH /api/notifications/{id}/read` | session           | `notifications`               | Marks one notification read; `400` if `id` is not a UUID, `404` if it does not belong to you                                                         |
 | `GET /api/notifications/settings`    | session           | `notification_settings`       | Channel preferences of the caller                                                                                                                    |
 | `PUT /api/notifications/settings`    | session           | `notification_settings`       | Body `{ settings: [{ channel, enabled }] }`, upserted per `(user_id, channel)`                                                                       |
 | `GET /api/search`                    | session + profile | `users`, `requests`, `shifts` | `q` (≥2 characters) and `type=all\|users\|requests\|shifts`; up to 10 rows per group; `403` when the account has no user profile                     |
 | `GET /api/branches`                  | session           | `branches`                    | Branch list sorted by name, including the GPS geofence (`latitude`, `longitude`, `attendance_radius`)                                                 |
-| `POST /api/branches`                 | session           | `branches`                    | Body `{ name, address?, manager_id?, latitude?, longitude?, attendance_radius? }` → `201`; `400` when the coordinates or radius are invalid; writes need an `OWNER`/`CHU` role (RLS) |
-| `PUT /api/branches/{id}`             | session           | `branches`                    | Replaces the editable fields of one branch; `400` if `id` is not a UUID, `404` when the branch is missing or not updatable                          |
-| `GET /api/users`                     | session           | `users`                       | `?id=<uuid>` → `{ id, full_name, role }` (`404` when unknown); without `id` → the staff directory including `is_active`, `403` unless the caller is `OWNER`/`CHU` |
-| `PATCH /api/users/{id}`              | session + role    | `users`                       | Body `{ role, is_active }` → the updated staff member; `403` unless `OWNER`/`CHU`, only an `OWNER` may grant or revoke the `OWNER` role, and nobody may change their own role or deactivate themselves |
+| `POST /api/branches`                 | session + role    | `branches`                    | Body `{ name, address?, manager_id?, latitude?, longitude?, attendance_radius? }` → `201`; `400` when the coordinates or radius are invalid, or `manager_id` names an account that is not a `MANAGER` (SCRUM-63: the owner and an employee may not head a branch); writes need `branch:manage` (`OWNER` only), which RLS repeats |
+| `PUT /api/branches/{id}`             | session + role    | `branches`                    | Replaces the editable fields of one branch: `branch:update` — the organization's `OWNER` or the chi nhánh trưởng of that very branch (SCRUM-61), so editing another branch is `403`. Only the `OWNER` may change `manager_id`. `400` when `id` is not a UUID, `manager_id` names no account in the caller's organization, or it names an `EMPLOYEE` or the `OWNER` (only a `MANAGER` heads a branch — SCRUM-63 — and the picker does not offer the others), `404` when the branch is missing or not editable by the caller |
+| `DELETE /api/branches/{id}`          | session + role    | `branches`                    | Removes a branch; owner only (`branch:manage`). `409` while the branch still holds bảng công / ca làm việc / thiết bị / doanh thu — the sentence names the counts to move or remove first, because `attendance`, `shift_assignments` and `facilities` cascade and `daily_revenue.branch_id` has no foreign key. `404` when missing or not deletable |
+| `GET /api/geo/reverse`               | session           | Nominatim (OpenStreetMap)     | `?latitude=&longitude=` → `{ address }` for the branch form's address field; `400` when a coordinate is missing, out of range or outside Vietnam, `503` when the provider cannot be reached (addresses come from the same project as the map tiles and need no key) |
+| `GET /api/users`                     | session + role    | `users`                       | `?id=<uuid>` → `{ id, full_name, role, branch_id }` (`404` when unknown); without `id` → the staff directory including `is_active` and `branch_id`, `403` unless the caller holds `directory:view` (`OWNER`/`MANAGER`) |
+| `PATCH /api/users/{id}`              | session + role    | `users`                       | Body `{ role, is_active, branch_id? }` → the updated staff member; `403` unless the caller holds `staff:manage` (`OWNER` only), and nobody may change their own role or deactivate themselves. `branch_id` (SCRUM-63) attaches the account to a branch — omitted keeps the current one, `null` tháo gán, `400` when it names no branch in your organization or when the account is the organization's `OWNER` (the owner stands above every branch and is never attached to one). An employee with no branch reads no branch-scoped row and cannot file a đơn |
 | `POST /api/organizations`            | session           | `organizations`               | Body `{ name }` → `201`; creates the caller's organization and makes them its `OWNER` (registering grants nothing); `409` when they already belong to one |
-| `GET /api/organizations/current`     | session           | `organizations` + `users`     | `{ organization, code, member_count, pending_invite_count }`; `organization` is null while the caller has none, and `code` is null unless they are `OWNER`/`CHU` (RLS keeps it) |
-| `PATCH /api/organizations/current`   | session + role    | `organizations`               | Body `{ name?, rotate_code? }` → the updated summary; renaming needs `OWNER`/`CHU`, rotating the join code (`regenerate_organization_code`) needs `OWNER` |
+| `GET /api/organizations/current`     | session           | `organizations` + `users`     | `{ organization, code, member_count, pending_invite_count }`; `organization` is null while the caller has none, and `code` is null unless they are the `OWNER` (RLS keeps it) |
+| `PATCH /api/organizations/current`   | session + role    | `organizations`               | Body `{ name?, rotate_code? }` → the updated summary; both actions need `organization:manage` (`OWNER` only), rotating the join code through `regenerate_organization_code` |
 | `POST /api/organizations/join`       | session           | RPC `join_organization`       | Body `{ code }` → the summary. **Two factors**: the code must match *and* the caller's email must be on that organization's register; an outsider with the code gets `403`, ten failed attempts per hour get `429`, already being in an organization gets `409` |
-| `GET /api/organizations/invites`     | session + role    | `organization_invites`        | The register of accounts (`invite` = asked an existing account, `provisioned` = created with a temporary password); `403` unless `OWNER`/`CHU` |
-| `POST /api/organizations/invites`    | session + role    | `organization_invites`        | Body `{ email, full_name?, role? }` → `201`; `role` is capped at `CHU` (an invite never mints an `OWNER`), `409` when the address is already listed |
+| `GET /api/organizations/invites`     | session + role    | `organization_invites`        | The register of accounts (`invite` = asked an existing account, `provisioned` = created with a temporary password); `403` unless the caller holds `organization:manage` (`OWNER` only) |
+| `POST /api/organizations/invites`    | session + role    | `organization_invites`        | Body `{ email, full_name?, role? }` → `201`; `role` is capped at `MANAGER` (an invite never mints an `OWNER`), `409` when the address is already listed |
 | `DELETE /api/organizations/invites/{id}` | session + role | `organization_invites`        | Withdraws an unclaimed invite (`404` for another organization's row, `400` for a non-UUID id) |
-| `GET /api/organizations/accounts`    | session + role    | Edge Function probe           | `{ available }` — whether the `staff-account` Edge Function is deployed, so the screen can hide a form that would always fail |
+| `GET /api/organizations/accounts`    | session + role    | Edge Function probe           | `{ available }` — whether the `staff-account` Edge Function is deployed, so the screen can hide a form that would always fail; `403` unless the caller holds `organization:manage` (`OWNER` only) |
 | `POST /api/organizations/accounts`   | session + role    | Edge Function (service role)  | Body `{ email, password, full_name?, role? }` → `201`; creates a real Supabase Auth account with the owner-chosen temporary password, adds it to the register and flags `must_change_password`; `503` when the function is not deployed, `409` when the email exists |
 | `POST /api/organizations/accounts/password` | session + role | Edge Function (service role) | Body `{ user_id, password }` → replaces a member's temporary password; the function refuses any account outside the caller's organization (`403`) |
 | `POST /api/auth/change-password`     | session           | Supabase Auth + `complete_password_change` | Body `{ password }` → the caller's own new password (no service role) and clears `must_change_password`, which is what the `/change-password` gate reads |
@@ -250,11 +259,69 @@ Every endpoint above requires a session cookie, and the data is real: the last m
 nhân viên) moved to the `get_employee_status` RPC, and `lib/mock/adminStore.ts` was deleted with it.
 
 ```bash
-# Approve a staff request (OWNER/CHU only — everyone else gets 403):
+# Submit one's own request (any role; it reaches the approval queue as PENDING):
+curl -X POST http://localhost:3000/api/requests \
+  -H "Content-Type: application/json" -b "<supabase-auth-cookie>" \
+  -d '{"branch_id":"22222222-2222-4222-8222-222222222222","request_type":"Nghỉ phép","title":"Xin nghỉ phép ngày 12/10","content":"Nghỉ 1 ngày, đã nhờ bạn đổi ca."}'
+
+# Approve a staff request (OWNER/MANAGER — everyone else gets 403):
 curl -X PATCH http://localhost:3000/api/requests/11111111-1111-4111-8111-111111111111/review \
   -H "Content-Type: application/json" -b "<supabase-auth-cookie>" \
   -d '{"status":"APPROVED"}'
 ```
+
+## Roles & access (SCRUM-59)
+
+Three levels, and one table that drives every layer:
+
+| Role       | What it is                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `OWNER`    | Owns the organization: its settings (name, join code), its register of accounts, staff roles and branches.      |
+| `MANAGER`  | Runs the day-to-day operation: schedule, timesheet review, requests, revenue, facilities.                       |
+| `EMPLOYEE` | Their own shifts, timesheet and requests. (`CHU` was the pre-SCRUM-59 spelling of `MANAGER`; the app still reads it and maps it through `normalizeRole`, which is what makes the rename a single-step deploy.) |
+
+`lib/accessPolicy.ts` holds the capability table and the screen-to-capability map, and five layers read it:
+
+1. `proxy.ts` redirects a deep link the role may not open (`canAccessScreen`) to `firstAccessiblePath`,
+2. `components/Sidebar.tsx` renders only the links the role may open,
+3. a page hides a control the role may not use behind `useProfile().can("…")` — no "Thêm chi nhánh" for a
+   manager on `/branches`, no Duyệt/Từ chối for an employee on `/requests`,
+4. a route handler refuses the call with `403` before the use case runs (`requireCapability("…")` from
+   `app/api/_lib/requireCaller.ts`),
+5. RLS repeats the rule in the database, which is the boundary that actually holds
+   (`is_organization_manager()` / `is_organization_owner()` / `heads_branch()`, plus SCRUM-60's per-role
+   read scope).
+
+| Capability                                                              | `EMPLOYEE` | `MANAGER` | `OWNER` |
+| ----------------------------------------------------------------------- | :--------: | :-------: | :-----: |
+| `dashboard:view`, `notification:view`, `knowledge:view`                  | ✓          | ✓         | ✓       |
+| own `request:view`, `schedule:view`, `attendance:view` (RLS narrows rows)| ✓          | ✓         | ✓       |
+| `revenue:manage`, `report:view`, `employee-status:view`                  | —          | ✓         | ✓       |
+| `request:review`, `schedule:manage`, `attendance:review`, `facility:manage`, `branch:view`, `branch:update`, `directory:view` | — | ✓ | ✓ |
+| `branch:manage` (create, delete), `staff:manage`, `organization:manage`   | —          | —         | ✓       |
+
+### Branch scope: a chi nhánh trưởng manages their own branch (SCRUM-61)
+
+The capability table above says a `MANAGER` may run the operation; **which** branch is decided by
+`branches.manager_id`. A manager is the *chi nhánh trưởng* of the branch that names them there, and
+they may only write that one — `OWNER` keeps working across every branch:
+
+| Layer                | What it does                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lib/domain/branchScope.ts` | The rule in one place: `canManageBranch(branch, viewer)` / `defaultBranchId(branches, viewer)`, read by the use cases **and** the screens (so the two cannot drift). |
+| Route handlers       | `requireCapability(…)` first (`revenue:manage`, `schedule:manage`, `attendance:review`, `facility:manage`, `branch:update`), then the use case. |
+| Use cases            | `assertBranchManagedBy(branchRepository, branchId, caller)` (`lib/usecases/branchScope.ts`) answers `403` for another branch instead of letting RLS silently match no row — applied to revenue open/close, schedule write/update/delete, attendance correct/verify/complaint (the manager path), facility write/update/delete, branch update and request review. |
+| Database             | `public.heads_branch(uuid)` replaces `is_organization_manager()` in the write policies of `branches`, `daily_revenue`, `shift_assignments`, `attendance`, `facilities` and `requests`; `branches_guard_manager_change` keeps `manager_id` an owner decision. |
+| Screens              | Pickers whose value is the *target of a write* (revenue, the schedule and facility modals) gray out — `disabled` + "— chỉ xem" — every branch the caller does not head, and open on their own; row actions outside the scope read **Chỉ xem**. Read filters stay usable: SCRUM-60 deliberately lets a manager read the whole organization. |
+
+Deleting a branch is owner-only and refuses while the branch still holds data (`409`, with the counts);
+`branches_guard_delete` repeats that check in the database, because `attendance`, `shift_assignments` and
+`facilities` cascade and `daily_revenue.branch_id` has no foreign key at all.
+
+Deploy order matters: `SCRUM-59_role_model.sql` first, then this app **with** the redeployed
+`staff-account` Edge Function (it accepts `EMPLOYEE`/`MANAGER` and still understands the old `CHU`), then
+`SCRUM-60_role_read_scope.sql`, then `SCRUM-61_branch_scope.sql` (together with the app build that ships
+it — the script alone only makes branch writes stricter).
 
 ## Database & Supabase
 
@@ -282,8 +349,15 @@ Editor (there is no migration runner or Supabase CLI here). Apply it in this ord
 | 17  | `SCRUM-54_fix_organization_policy_recursion.sql` | Makes `current_organization_id()` and `is_organization_manager()` **`security definer`**. Both read `public.users` and the `users` policies call them, so as `security invoker` the policy re-entered itself on the inner read and every profile read failed with `stack depth limit exceeded` — which is what made `/organization` answer 500 and stopped the post-login `/onboarding` redirect from firing. Safe because each helper answers only about the caller (`where id = auth.uid()`); run it **after SCRUM-51** |
 | 18  | `SCRUM-55_schema_gap_fill.sql`      | Gap-fills the three tables that already existed here when SCRUM-41/48 were written, so their `create table if not exists` was a no-op: adds `notifications.body` / `related_entity_type` / `related_entity_id` (copying the hand-made `content` into `body`), gives `notification_settings` its `id` (backfilled, then keyed) plus the `(user_id, channel)` uniqueness the settings upsert conflicts on, restates SCRUM-48's indexes, trigger and five policies idempotently, and adds the `requests_user_id_fkey` foreign key the `requester` embed resolves through. Without it `/api/notifications`, `/api/notifications/settings` and `/api/requests` answer 500 |
 | 19  | `SCRUM-56_requests_foreign_key.sql` | Creates `requests_user_id_fkey` (the relationship the `requester:users!requests_user_id_fkey` embed needs — the copy in SCRUM-55 did not land, and `requests` has no foreign keys at all) plus the two `_user_id_fkey` keys SCRUM-48 declares, finishes `notification_settings`' primary key and its `(user_id, channel)` uniqueness, **prints a relkind/constraint report** and ends with `notify pgrst, 'reload schema'`. Read the Messages tab: every failure is caught and reported with the database's own error text instead of stopping the script |
+| 20  | `SCRUM-57_vietnam_bounds.sql`       | Constraint `branches_vietnam_bounds_check`: a branch's `latitude`/`longitude` must sit inside Vietnam's envelope (8.5436–23.3883° N, 102.0967–109.4944° E) or both be `null`. An envelope alone would still accept a point in Laos or in the sea, so the API parser and the branch map picker additionally test the real land outline from `lib/geo/vietnamOutline.ts` via `isInsideVietnam` (point-in-polygon + a 2 km coastal band, because Natural Earth's own coastlines are generalised by up to ~1.7 km) — the constraint is the backstop for writes that bypass the app |
 
-Tables the API touches: `users` (its `role` gates approvals — `OWNER`/`CHU`), `requests`, `shifts`
+| 21  | `SCRUM-58_shift_catalogue.sql`      | Refills the `public.shifts` catalogue, which SCRUM-53 scoped per organization while SCRUM-30's seeds had been written with `organization_id = null`: adopts those pre-organization templates when the project has exactly one organization, inserts the standard `Ca sáng` / `Ca chiều` / `Ca tối` / `Nghỉ` for every organization that is missing any of them (guarded per `(organization_id, name)`, so re-running only fills gaps), and adds an `after insert` trigger on `public.organizations` so each **future** organization is seeded on creation. Without it the "Ca làm việc" picker on `/schedules` lists nothing |
+| 22  | `SCRUM-59_role_model.sql`           | Mô hình quyền ba cấp: renames `CHU` → `MANAGER` in `users` and `organization_invites` (and rewrites `organization_invites_role_check` to `('EMPLOYEE','MANAGER')`, which would otherwise reject every manager invite), adds `is_organization_owner()` as `security definer`, and rewrites the organization's own policies — `organizations`, `organization_join_codes`, `organization_invites`, `organization_join_attempts` — to that owner check. Each policy is re-created from its previous definition so no original condition is dropped, and the script ends with a report of every policy mentioning the role helpers. Run it **before** deploying the app build that sends `MANAGER` |
+| 23  | `SCRUM-60_role_read_scope.sql`      | Read scope per role: inside an organization an employee now reads only their own rows — `attendance`, `requests`, `shift_assignments`, `daily_revenue`, `facilities` — while `OWNER` and `MANAGER` read the organization's. `get_revenue_report()` and `get_employee_status()` are `security invoker`, so they follow these policies without a change of their own, and `branches` / `shifts` keep their org-wide SELECT because the mobile check-in needs the geofence and the shared schedule. Run it **after** the app deploy |
+| 24  | `SCRUM-61_branch_scope.sql`       | Branch scope: `public.heads_branch(uuid)` — a `security definer` helper that answers whether the caller is the chi nhánh trưởng of a branch — replaces `is_organization_manager()` in the write policies of `branches`, `daily_revenue`, `shift_assignments`, `attendance`, `facilities` and `requests`, so a `MANAGER` writes only the branch they head while `OWNER` keeps the whole organization. Adds the owner-only `branches` DELETE policy (there was none, so deleting was impossible) plus two guards: `branches_guard_manager_change` (`manager_id` stays an owner decision) and `branches_guard_delete` (a branch that still holds bảng công / ca / thiết bị / doanh thu cannot be deleted, mirroring the API's `409`). Reads are untouched: SCRUM-60 stays as it is |
+| 25  | `SCRUM-62_request_type_constraint.sql` | Reconciles the hand-made `requests_request_type_check` with the app's vocabulary. The constraint was created in the dashboard before any ticket and PostgREST never exposes a check definition, so `POST /api/requests` could only answer `500 ... violates check constraint "requests_request_type_check"`. The script **prints the definition it replaces** (Messages tab), drops it and recreates it for `('Nghỉ phép','Đổi ca','Điều chỉnh công','Khác')` — the values `REQUEST_TYPES` in `lib/domain/entities/RequestEntity.ts` sends, because `request_type` is stored and displayed verbatim. Keep the two lists identical | 
+| 26  | `SCRUM-63_employee_branch.sql`      | Mỗi nhân viên thuộc một chi nhánh (employee branch scope): adds `users.branch_id` (nullable, `on delete set null`, indexed) and `public.current_branch_id()` (`security definer`, like the other policy helpers), then narrows the **employee** half of the read policies on `branches`, `requests`, `attendance` and `shift_assignments` to `branch_id = current_branch_id()` while `is_organization_manager()` keeps a manager's organization-wide read; `requests_insert_own` and `attendance_insert_own` get the same test, so an unassigned account (`branch_id = null`) files no đơn and checks in nowhere. Run it **before** deploying the build that carries it: `GET /api/auth/session` selects the column |
+Tables the API touches: `users` (its `role` gates every management action — `OWNER`/`MANAGER`), `requests`, `shifts`
 (the template catalogue), `shift_assignments` (the schedule), `attendance`, `daily_revenue`, `branches`,
 `facilities`, `notifications`, `notification_settings`.
 
@@ -307,13 +381,13 @@ deliberately does not have. That single capability therefore lives in an Edge Fu
   are not real errors. Install the Deno VS Code extension (or run `deno check
   supabase/functions/staff-account/index.ts`) and they stop; the Edge runtime bundles the file at deploy.
 - **How it is called:** `POST /api/organizations/accounts` forwards the *caller's* access token, so the
-  function authorizes the user (it re-reads their profile and requires `OWNER`/`CHU` of an organization)
+  function authorizes the user (it re-reads their profile and requires the organization's `OWNER`)
   rather than trusting this app. The URL is derived from `NEXT_PUBLIC_SUPABASE_URL` as
   `…/functions/v1/staff-account`; set `STAFF_ACCOUNT_FUNCTION_URL` to override it if you rename the
   function.
 - **Behaviour without it:** `GET /api/organizations/accounts` answers `{ available, reason, detail }`
   where `reason` is one of `ready`, `not_deployed`, `unauthenticated` (the function refused the session
-  token — keep "Verify JWT" on), `not_allowed` (this account is not `OWNER`/`CHU` of an organization) or
+  token — keep "Verify JWT" on), `not_allowed` (this account is not the organization's `OWNER`) or
   `misconfigured` (deployed but answering 5xx, e.g. missing secrets). The `/organization` screen shows the
   instruction that matches the reason instead of a form that would always fail, and the invite path
   (`POST /api/organizations/invites`) still onboards people.
@@ -434,12 +508,20 @@ An honest snapshot of what is real and what is still a prototype:
   `/reports` is a thin view over `get_revenue_report` with period, branch and date filters; `/notifications`
   reads the paginated feed, marks items read one call at a time (there is no bulk endpoint) and edits the
   channel settings. `app/branches/page.tsx` is
-  wired to `/api/branches`; it deliberately has no branch-manager picker yet, because choosing a manager
-  needs a staff-list endpoint and exposing staff rows is a PII decision (`AGENTS.md` → ask first). The
-  `branches.manager_id` column and the API field already exist, so only the picker is missing.
-  `app/facilities/page.tsx` and `app/schedules/page.tsx` are wired to their APIs as well; the schedule
-  picks a person by searching `GET /api/search?type=users` rather than listing all staff, for the same PII
-  reason, and `/api/schedules` embeds the employee name and shift hours so one request fills the week.
+  wired to `/api/branches` and assigns a `Chi nhánh trưởng` from the SCRUM-24 staff directory
+  (`GET /api/users`, `OWNER`/`MANAGER` only — the PII decision is that the directory stays behind that
+  gate, so a role without it sees `Đã gán`/`Chưa gán` instead of a name), and its address field is filled by
+  reverse geocoding (`GET /api/geo/reverse`) whenever the pin moves or "Lấy vị trí hiện tại" is used.
+  The API refuses a `manager_id` it cannot resolve (RLS keeps that lookup inside the organization).
+  `app/facilities/page.tsx` and `app/schedules/page.tsx` are wired to their APIs as well.
+  `/schedules` picks the person with a combobox over the SCRUM-24 directory (`GET /api/users`, which also
+  carries `is_active`, so an account that has quit is never offered — an assignment that predates the
+  resignation stays editable and is marked `(đã nghỉ)`), lists every active employee on the first click
+  and filters as the name is typed (diacritics optional, see `lib/searchText.ts`); `/api/schedules` embeds
+  the employee name and shift hours so one request fills the week. Its "Ca làm việc" picker reads
+  `/api/shifts`, whose catalogue is per organization (SCRUM-53): an organization that was never seeded
+  sees an explicit "chưa có ca làm việc nào" hint pointing at `supabase/sql/SCRUM-58_shift_catalogue.sql`
+  instead of an empty dropdown.
   `app/requests/page.tsx` is wired to the real `requests` table too; it shows the requester name from the
   embedded `users` row, so a missing profile would only cost the name (it is not a PII decision because the
   queue is the point of the screen). `app/attendance/page.tsx` is the review half of attendance: it reads
@@ -454,7 +536,7 @@ An honest snapshot of what is real and what is still a prototype:
 - **Registration needs `SCRUM-50_user_registration.sql`.** Sign-up creates the `auth.users` account and the
   trigger creates the matching `public.users` row with the default role `EMPLOYEE`; without that script the
   account exists but has no profile, so `/api/auth/session` answers `404` and the header shows no name. New
-  accounts are never privileged — `OWNER`/`CHU` is granted by an owner (the promote snippet is at the end of
+  accounts are never privileged — `OWNER`/`MANAGER` is granted by an owner (the promote snippet is at the end of
   the script). If the Supabase project has *Confirm email* enabled, the response carries
   `emailConfirmationRequired: true` and the screen asks the user to open the confirmation link, because no
   session can be created before the address is verified.
@@ -484,11 +566,11 @@ An honest snapshot of what is real and what is still a prototype:
 | `/schedules` shows the shift picker empty                             | `public.shifts` has no templates — run `supabase/sql/SCRUM-30_schedule.sql`, which seeds `Ca sáng` / `Ca chiều` / `Ca tối` / `Nghỉ` |
 | Scheduling answers `409`, or `/schedules` shows no employee name      | `409` means the employee already has an overlapping shift that day (by design). A blank name means the `users` SELECT policy hides the profile from the embedded join |
 | Every row of `/api/schedules` has `employee: null`                    | The `users` SELECT policy hides that profile from the embedded join — run `supabase/sql/SCRUM-24_staff_admin.sql`, which creates `users_select_authenticated`                                                  |
-| Duyệt đơn answers `403`                                               | The account has no `public.users` row, or its `role` is neither `OWNER` nor `CHU` — run `SCRUM-50` and promote the account |
+| Duyệt đơn answers `403`                                               | The account holds neither `request:review` (`OWNER`/`MANAGER`) nor a `public.users` row — run `SCRUM-50` and promote the account |
 | `/requests` lists nothing although rows exist                         | `requests_select_authenticated` (SCRUM-41) is missing, so RLS hides every row from the session                                                                |
 | Bảng công is empty                                                    | `public.attendance` does not exist yet — run `supabase/sql/SCRUM-21_attendance.sql`; the rows themselves are inserted by the mobile check-in                             |
-| An employee cannot correct their own check-in time                    | By design: `attendance_guard_self_update` lets them complete the record (giờ ra, ghi chú, khiếu nại) while only an `OWNER`/`CHU` may change the check-in facts. Have a manager verify the record instead |
-| `403` on Xác nhận / khiếu nại                                         | The account has no `public.users` row, or its role is neither `OWNER` nor `CHU`                                                                               |
+| An employee cannot correct their own check-in time                    | By design: `attendance_guard_self_update` lets them complete the record (giờ ra, ghi chú, khiếu nại) while only an `OWNER`/`MANAGER` (SCRUM-59 `attendance:review`) may change the check-in facts. Have a manager verify the record instead |
+| `403` on Xác nhận / khiếu nại                                         | Resolving or verifying needs `attendance:review` (`OWNER`/`MANAGER`); raising one's own khiếu nại does not. Also check for a missing `public.users` row |
 | `/employee-status` lists only your own account                        | `get_employee_status` is `security invoker`, so the `users` SELECT policy decides: a policy that only exposes the caller's row shows a one-row roster                  |
 | `/notifications`, `/api/requests` show "Unable to retrieve …" (500)   | Those tables were hand-made before SCRUM-41/48, so their `create table if not exists` never added the declared columns and the `requests_user_id_fkey` foreign key — run `supabase/sql/SCRUM-55_schema_gap_fill.sql`, then `SCRUM-56_requests_foreign_key.sql` if `/api/requests` is still 500 (read its Messages output: it reports the reason). The server log names the exact cause too (`column notifications.body does not exist`, `PGRST200 Could not find a relationship`) |
 | `/employee-status` lists everyone as "Không có ca hôm nay"            | Nothing is scheduled (run `SCRUM-30_schedule.sql`, then add assignments) and/or nobody has checked in — the roster is derived from those two tables                             |
@@ -503,8 +585,20 @@ An honest snapshot of what is real and what is still a prototype:
 | `403` on join although the code is right                             | The account's email is not on that organization's register — this is the anti-outsider rule. The owner adds it on `/organization`; the message says so                      |
 | `429` when joining                                                   | Ten failed join attempts by that account in the last hour (`organization_join_attempts` is both the trail and the throttle)                                                   |
 | "The staff account service is not available." (`503`)                | The `staff-account` Edge Function is not deployed yet — deploy it (see "The `staff-account` Edge Function") or onboard people with an invite instead                          |
-| `/organization` shows the amber "chức năng này chưa được bật" note   | Read the sentence: the probe (`GET /api/organizations/accounts`) says which case it is — `not_deployed` (deploy the function), `not_allowed` (your account needs an organization and `OWNER`/`CHU`), `unauthenticated` (turn "Verify JWT" back on) or `misconfigured` (the function answers 5xx: check its secrets and logs) |
+| `POST /api/organizations/accounts` answers `409` although nobody by that name is in `public.users` | The address already has a Supabase Auth account, or its register row is already claimed — the Edge Function returns the same status for both. Read the form's own banner, which repeats the function's answer: "đã là thành viên" means the register row is claimed and nothing is left to create; the other sentence means the address already has a login and is **not** a member, so the person signs in with that login and joins with the code instead of being provisioned again. Only when that login is a leftover from a half-finished create — check **Authentication → Users** in Supabase for the email, because an `on_auth_user_created` gap (SCRUM-50 not applied when it was created) leaves an auth user with **no** `public.users` row, which is what makes the account look like it does not exist — apply `SCRUM-50_user_registration.sql`, delete the leftover auth user, then create it again |
+| `/organization` shows the amber "chức năng này chưa được bật" note   | Read the sentence: the probe (`GET /api/organizations/accounts`) says which case it is — `not_deployed` (deploy the function), `not_allowed` (your account needs an organization and `OWNER`), `unauthenticated` (turn "Verify JWT" back on) or `misconfigured` (the function answers 5xx: check its secrets and logs) |
 | Attendance / revenue / schedules look empty after `SCRUM-53`         | The rows still have `organization_id = null`: the script's backfill only runs when exactly one organization exists. Assign them with the `update` statements printed at the end of that script, then re-run its second verification query |
+| Xoá chi nhánh answers `409`                                          | By design (SCRUM-61): `attendance`, `shift_assignments` and `facilities` cascade on delete and `daily_revenue.branch_id` has no foreign key, so a branch with history cannot go. The sentence names the counts — move or remove them first (or deactivate the branch instead of deleting it) |
+| A manager answers `403` on Xác nhận / Xếp ca / mở ca / thiết bị       | They are not the chi nhánh trưởng of that branch: `branches.manager_id` names somebody else or nobody. Assign the branch head on `/branches` (an owner action, `branch:manage`) — a manager who heads no branch can read the organization but write nothing |
+| Chỉnh sửa chi nhánh answers `403` although I am a manager              | Only the branch head edits their branch, and only the owner changes `manager_id` (SCRUM-61). The row reads **Chỉ xem** when the branch is not yours, and the Chi nhánh trưởng field is disabled for a manager |
+| Every branch picker is grayed out ("— chỉ xem")                       | `SCRUM-61_branch_scope.sql` is applied but `branches.manager_id` is empty for those rows, so `heads_branch()` answers false for all of them. Assign a chi nhánh trưởng, or sign in as the owner |
+| `POST /api/requests` answers `500 ... violates check constraint "requests_request_type_check"` | The database's `request_type` CHECK still speaks the vocabulary the hand-made table was created with, while the app sends `REQUEST_TYPES` (`Nghỉ phép`, `Đổi ca`, `Điều chỉnh công`, `Khác`). Run `SCRUM-62_request_type_constraint.sql` and read its Messages tab: it prints the old definition before replacing it. If you would rather keep the old values, extend the `in (...)` list **and** `REQUEST_TYPES` — never one of the two alone |
+| Every authenticated screen answers `500` and the log says `column users.branch_id does not exist` | The build selects `users.branch_id` (the session carries it), so `SCRUM-63_employee_branch.sql` has to be applied first — this column is not one the app can skip, unlike `is_active` |
+| An employee sees no branch, no ca, no bảng công, and "Tạo đơn" is missing | Intended (SCRUM-63): the account has no `users.branch_id`. Assign the branch on `/staff` (owner only, "Chi nhánh" column); until then the account belongs to no branch and reaches nothing branch-scoped — including the API, which answers `403` to a submission |
+| An employee answers `403` when filing for another branch                   | Also intended: `CreateRequestUseCase` and `requests_insert_own` both compare the đơn's branch with `current_branch_id()`. The dialog shows the branch as a statement for an employee, so this is a hand-made request only |
+| A manager's `/staff` row shows only "Phụ trách: …" with no branch select | Intended (SCRUM-63): only an `EMPLOYEE` is attached to `users.branch_id`, which is what that select sets. What a manager runs comes from `branches.manager_id`, so the grey line mirrors that instead — a picker and the amber warning would both be misleading for a role that reads the whole organization (SCRUM-60). Assign a head on `/branches` if that line is wrong |
+| `/branches` flags a row "Chủ sở hữu không phụ trách chi nhánh — cần gán quản lý chi nhánh" | The owner is no longer offered as a chi nhánh trưởng (SCRUM-63): they stand above every branch. Open the branch, pick a `MANAGER` (or clear the field) and save — the modal explains why the field opens empty and the API answers `400` if an owner is sent |
+| A manager's modal on `/branches` shows "— Chưa gán —" for a head I never touched | Only the `OWNER` may change `manager_id`, and the field is disabled for anybody else; a *legacy* head the app no longer accepts (an owner) is cleared on open for the owner, with the amber note above it |
 
 ## Related documents
 

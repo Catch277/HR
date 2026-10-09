@@ -14,29 +14,44 @@ export function getApiDocs() {
         schemas: {
           User: {
             type: "object",
-            required: ["id", "full_name", "role"],
+            required: ["id", "full_name", "role", "branch_id"],
             properties: {
               id: { type: "string", format: "uuid" },
               full_name: { type: "string" },
               role: { type: "string" },
+              branch_id: {
+                type: "string",
+                format: "uuid",
+                nullable: true,
+                description:
+                  "Chi nhánh tài khoản thuộc về (SCRUM-63); null nghĩa là chưa gán chi nhánh.",
+              },
             },
           },
           StaffMember: {
             type: "object",
-            required: ["id", "full_name", "role", "is_active", "created_at"],
+            required: ["id", "full_name", "role", "is_active", "created_at", "branch_id"],
             properties: {
               id: { type: "string", format: "uuid" },
               full_name: { type: "string" },
               role: {
                 type: "string",
-                enum: ["OWNER", "CHU", "EMPLOYEE"],
-                description: "Vai trò hệ thống; OWNER/CHU mới quản lý được nhân sự.",
+                enum: ["OWNER", "MANAGER", "EMPLOYEE"],
+                description:
+                  "Vai trò hệ thống (SCRUM-59); chỉ OWNER quản lý nhân sự, MANAGER điều hành ca/timesheet/doanh thu.",
               },
               is_active: {
                 type: "boolean",
                 description: "false nghĩa là tài khoản đã nghỉ việc.",
               },
               created_at: { type: "string", format: "date-time" },
+              branch_id: {
+                type: "string",
+                format: "uuid",
+                nullable: true,
+                description:
+                  "Chi nhánh nhân viên thuộc về (SCRUM-63); null là chưa gán — nhân viên chưa gán chi nhánh không đọc được dữ liệu nào theo chi nhánh và không gửi được đơn.",
+              },
             },
           },
           Organization: {
@@ -64,7 +79,7 @@ export function getApiDocs() {
                 type: "string",
                 nullable: true,
                 description:
-                  "Mã tham gia của tổ chức; null khi người gọi không phải OWNER/CHU (RLS giữ mã lại).",
+                  "Mã tham gia của tổ chức; null khi người gọi không phải OWNER (RLS giữ mã lại).",
               },
               member_count: {
                 type: "integer",
@@ -97,7 +112,7 @@ export function getApiDocs() {
               full_name: { type: "string", nullable: true },
               role: {
                 type: "string",
-                enum: ["EMPLOYEE", "CHU"],
+                enum: ["EMPLOYEE", "MANAGER"],
                 description: "Vai trò khi gia nhập; lời mời không bao giờ tạo ra OWNER.",
               },
               source: {
@@ -191,8 +206,20 @@ export function getApiDocs() {
                 nullable: true,
                 description: "Chi nhánh trưởng (public.users.id).",
               },
-              latitude: { type: "number", nullable: true },
-              longitude: { type: "number", nullable: true },
+              latitude: {
+                type: "number",
+                nullable: true,
+                minimum: 8.5436,
+                maximum: 23.3883,
+                description: "Vĩ độ, chỉ chấp nhận toạ độ tại Việt Nam (8.5436–23.3883° N).",
+              },
+              longitude: {
+                type: "number",
+                nullable: true,
+                minimum: 102.0967,
+                maximum: 109.4944,
+                description: "Kinh độ, chỉ chấp nhận toạ độ tại Việt Nam (102.0967–109.4944° E).",
+              },
               attendance_radius: {
                 type: "integer",
                 description: "Bán kính cho phép chấm công (mét) quanh toạ độ chi nhánh.",
@@ -421,7 +448,8 @@ export function getApiDocs() {
               full_name: { type: "string" },
               role: {
                 type: "string",
-                description: "Vai trò hệ thống: OWNER, CHU hoặc EMPLOYEE.",
+                enum: ["OWNER", "MANAGER", "EMPLOYEE"],
+                description: "Vai trò hệ thống: OWNER, MANAGER hoặc EMPLOYEE (SCRUM-59).",
               },
               branch_id: { type: "string", format: "uuid", nullable: true },
               branch_name: { type: "string", nullable: true },
@@ -961,6 +989,21 @@ export function getApiDocs() {
                 nullable: true,
               },
               note: { type: "string", maxLength: 500, nullable: true },
+            },
+          },
+          ReverseGeocodeResult: {
+            type: "object",
+            required: ["address"],
+            properties: {
+              address: {
+                type: "string",
+                nullable: true,
+                maxLength: 300,
+                description:
+                  "Địa chỉ đầy đủ của toạ độ (Nominatim/OpenStreetMap, tiếng Việt); null khi nhà cung cấp không có địa chỉ cho điểm đó.",
+                example:
+                  "128 Lê Lợi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh",
+              },
             },
           },
           ErrorResponse: {

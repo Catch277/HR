@@ -7,7 +7,7 @@
  *       SCRUM-51: the register of accounts the organization knows — both `invite` rows (an owner
  *       asked an existing account to join) and `provisioned` rows (an owner created the account and
  *       handed over a temporary password, SCRUM-52). `claimed_at` says whether the person has
- *       joined. OWNER/CHU only; RLS hides other organizations' rows.
+ *       joined. OWNER only (SCRUM-59 `organization:manage`); RLS hides other organizations' rows.
  *     tags:
  *       - Organizations
  *     responses:
@@ -48,7 +48,7 @@
  *     description: |
  *       SCRUM-51: puts an email on the organization's register. The person keeps their own password
  *       (this is the path for somebody who already signed up); the invite is what makes the join
- *       code usable for them, and `role` is capped at `CHU` — an invite never mints an OWNER.
+ *       code usable for them, and `role` is capped at `MANAGER` — an invite never mints an OWNER.
  *     tags:
  *       - Organizations
  *     requestBody:
@@ -69,7 +69,7 @@
  *                 nullable: true
  *               role:
  *                 type: string
- *                 enum: [EMPLOYEE, CHU]
+ *                 enum: [EMPLOYEE, MANAGER]
  *                 default: EMPLOYEE
  *     responses:
  *       201:
@@ -122,10 +122,11 @@ import { SupabaseOrganizationRepository } from "@/lib/infrastructure/repositorie
 import { CreateOrganizationInviteUseCase } from "@/lib/usecases/CreateOrganizationInviteUseCase";
 import { ListOrganizationInvitesUseCase } from "@/lib/usecases/ListOrganizationInvitesUseCase";
 import { organizationErrorResponse } from "@/app/api/organizations/_lib/organizationErrorResponse";
-import { requireCaller } from "@/app/api/organizations/_lib/requireCaller";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 export async function GET() {
-  const caller = await requireCaller();
+  // Invites are the owner's business (SCRUM-59): a manager runs the operation, not the roster.
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;
@@ -186,7 +187,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "role must be a string." }, { status: 400 });
   }
 
-  const caller = await requireCaller();
+  const caller = await requireCapability("organization:manage");
 
   if (!caller.ok) {
     return caller.response;

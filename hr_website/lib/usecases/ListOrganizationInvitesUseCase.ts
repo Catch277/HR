@@ -3,8 +3,7 @@ import { OrganizationForbiddenError } from "@/lib/domain/errors/OrganizationForb
 import { OrganizationNotFoundError } from "@/lib/domain/errors/OrganizationNotFoundError";
 import type { IOrganizationInviteRepository } from "@/lib/domain/repositories/IOrganizationInviteRepository";
 import type { IOrganizationRepository } from "@/lib/domain/repositories/IOrganizationRepository";
-
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
+import { isOwnerRole } from "@/lib/domain/roles";
 
 export type ListOrganizationInvitesInput = {
   callerRole: string;
@@ -17,7 +16,7 @@ export class ListOrganizationInvitesUseCase {
   ) {}
 
   async execute(input: ListOrganizationInvitesInput): Promise<OrganizationInvite[]> {
-    if (!MANAGER_ROLES.has(input.callerRole.trim().toUpperCase())) {
+    if (!isOwnerRole(input.callerRole)) {
       throw new OrganizationForbiddenError();
     }
 

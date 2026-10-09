@@ -64,7 +64,7 @@
  *     description: |
  *       Assigns one employee to one shift template on one business date. Answers `409` when the
  *       same employee already has an overlapping shift that day (or the exact same template).
- *       Restricted to OWNER/CHU accounts by RLS.
+ *       Restricted to managers (`schedule:manage`, SCRUM-59) and enforced by RLS.
  *     tags:
  *       - Schedules
  *     requestBody:
@@ -92,8 +92,14 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not write the schedule (SCRUM-59), or they do not head the branch the shift belongs to (SCRUM-61).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: The referenced shift template does not exist.
+ *         description: The referenced shift template does not exist, or the branch is not visible to the caller.
  *         content:
  *           application/json:
  *             schema:
@@ -113,13 +119,17 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { ShiftNotFoundError } from "@/lib/domain/errors/ShiftNotFoundError";
 import { ShiftOverlapError } from "@/lib/domain/errors/ShiftOverlapError";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { SupabaseShiftAssignmentRepository } from "@/lib/infrastructure/repositories/SupabaseShiftAssignmentRepository";
 import { SupabaseShiftRepository } from "@/lib/infrastructure/repositories/SupabaseShiftRepository";
 import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { CreateShiftAssignmentUseCase } from "@/lib/usecases/CreateShiftAssignmentUseCase";
 import { ListShiftAssignmentsUseCase } from "@/lib/usecases/ListShiftAssignmentsUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 import {
   UUID_PATTERN,
   isCalendarDate,
@@ -211,24 +221,25 @@ export async function POST(request: Request) {
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // Writing the schedule is a manager action (SCRUM-59); `shift_assignments` write policies repeat
+    // it in the database, and SCRUM-60 narrows the *read* to the employee's own shifts.
+    const caller = await requireCapability("schedule:manage");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const createAssignment = new CreateShiftAssignmentUseCase(
       new SupabaseShiftAssignmentRepository(),
       new SupabaseShiftRepository(),
+      new SupabaseBranchRepository(),
     );
-    const assignment = await createAssignment.execute(parsed.input);
+    const assignment = await createAssignment.execute({
+      ...parsed.input,
+      // SCRUM-61: the branch being scheduled into decides whether this manager may write it.
+      callerId: caller.userId,
+      callerRole: caller.role,
+    });
 
     return NextResponse.json(assignment, { status: 201 });
   } catch (error) {
@@ -238,6 +249,14 @@ export async function POST(request: Request) {
 
     if (error instanceof ShiftOverlapError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     console.error("Failed to create shift assignment", error);

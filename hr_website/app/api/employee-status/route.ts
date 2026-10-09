@@ -7,6 +7,8 @@
  *       One row per person for the day (SCRUM-22), derived from `shift_assignments` and
  *       `attendance` by the `get_employee_status` RPC: đang làm việc, chưa vào ca, nghỉ phép,
  *       đã tan ca, không có ca hôm nay or nghỉ việc. The day defaults to today in Asia/Bangkok.
+ *       SCRUM-59: giám sát nhân sự is a management view (`employee-status:view`), so a plain
+ *       employee gets `403`; SCRUM-60 narrows the rows `get_employee_status` may return.
  *     tags:
  *       - Employees
  *     parameters:
@@ -56,6 +58,12 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller has no user profile, or their role may not read the roster (SCRUM-59).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       500:
  *         description: An unexpected server error occurred.
  *         content:
@@ -66,8 +74,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { SupabaseEmployeeStatusRepository } from "@/lib/infrastructure/repositories/SupabaseEmployeeStatusRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { GetEmployeeStatusUseCase } from "@/lib/usecases/GetEmployeeStatusUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -110,17 +118,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // Giám sát nhân sự is a management view (SCRUM-59): the caller first, RLS second (SCRUM-60).
+    const caller = await requireCapability("employee-status:view");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const getEmployeeStatus = new GetEmployeeStatusUseCase(

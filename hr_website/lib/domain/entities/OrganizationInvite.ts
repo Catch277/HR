@@ -1,5 +1,9 @@
-/** An invite can never mint an OWNER: only an existing OWNER grants that role (SCRUM-24). */
-export const INVITE_ROLES = ["EMPLOYEE", "CHU"] as const;
+/**
+ * The roles an invite may carry — `APP_ROLES` without `OWNER` (`lib/domain/roles.ts`): an invite can
+ * never mint an owner, only an existing `OWNER` grants that role (SCRUM-24). SCRUM-59 renamed the
+ * middle level from `CHU` to `MANAGER`.
+ */
+export const INVITE_ROLES = ["EMPLOYEE", "MANAGER"] as const;
 
 export type InviteRole = (typeof INVITE_ROLES)[number];
 

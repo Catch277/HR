@@ -5,7 +5,8 @@
  *     summary: Look up a user, or list the staff directory
  *     description: |
  *       With `?id=<uuid>` returns that profile (id, full name, role). Without `id` returns the
- *       whole staff directory (SCRUM-24) including `is_active`, which only an OWNER/CHU may read.
+ *       whole staff directory (SCRUM-24) including `is_active`, which only a manager
+ *       (OWNER/MANAGER) may read — SCRUM-59 `directory:view`.
  *     tags:
  *       - Users
  *     parameters:
@@ -62,9 +63,9 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { StaffForbiddenError } from "@/lib/domain/errors/StaffForbiddenError";
 import { SupabaseUserRepository } from "@/lib/infrastructure/repositories/SupabaseUserRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { GetUserUseCase } from "@/lib/usecases/GetUserUseCase";
 import { ListStaffUseCase } from "@/lib/usecases/ListStaffUseCase";
+import { requireCaller, requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -80,22 +81,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
-    }
-
-    const getUser = new GetUserUseCase(new SupabaseUserRepository());
-
     if (id) {
+      // A single profile is what every screen needs to render a name, so any signed-in member may
+      // look one up; the row itself still has to satisfy the `users` SELECT policy.
+      const caller = await requireCaller();
+
+      if (!caller.ok) {
+        return caller.response;
+      }
+
+      const getUser = new GetUserUseCase(new SupabaseUserRepository());
       const profile = await getUser.execute(id);
 
       if (!profile) {
@@ -105,14 +100,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(profile);
     }
 
-    // No id: the staff directory, so the role comes from the caller's own profile.
-    const caller = await getUser.execute(user.id);
+    // No id: the staff directory. Reading it is a management view (SCRUM-59) — the shift and branch
+    // pickers need it, while a plain employee has `/api/search` for the same names.
+    const caller = await requireCapability("directory:view");
 
-    if (!caller) {
-      return NextResponse.json(
-        { error: "The account has no user profile." },
-        { status: 403 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const listStaff = new ListStaffUseCase(new SupabaseUserRepository());

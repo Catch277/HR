@@ -5,8 +5,9 @@
  *     summary: Resolve a complaint on an attendance record
  *     description: |
  *       Closes an open khiếu nại (SCRUM-23): sets `complaint_status` to `RESOLVED` and stamps
- *       `complaint_resolved_by` / `complaint_resolved_at`. Only OWNER/CHU may resolve one, while
- *       the employee on the record may raise it (POST /api/attendance/complaints).
+ *       `complaint_resolved_by` / `complaint_resolved_at`. Only a manager (OWNER/MANAGER) may resolve
+ *       one — SCRUM-59 `attendance:review` — while the employee on the record may raise it
+ *       (POST /api/attendance/complaints).
  *     tags:
  *       - Attendance
  *     parameters:
@@ -49,7 +50,7 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
- *         description: The caller has no user profile, or the role may not resolve complaints.
+ *         description: The caller has no user profile, the role may not resolve complaints, or they do not head that branch (SCRUM-61).
  *         content:
  *           application/json:
  *             schema:
@@ -71,11 +72,12 @@ import { NextResponse } from "next/server";
 
 import { AttendanceComplaintForbiddenError } from "@/lib/domain/errors/AttendanceComplaintForbiddenError";
 import { AttendanceNotFoundError } from "@/lib/domain/errors/AttendanceNotFoundError";
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { SupabaseAttendanceRepository } from "@/lib/infrastructure/repositories/SupabaseAttendanceRepository";
-import { SupabaseUserRepository } from "@/lib/infrastructure/repositories/SupabaseUserRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
-import { GetUserUseCase } from "@/lib/usecases/GetUserUseCase";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { ResolveAttendanceComplaintUseCase } from "@/lib/usecases/ResolveAttendanceComplaintUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -109,36 +111,22 @@ export async function PATCH(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // Resolving a complaint is a management action (SCRUM-59); the use case repeats the rule for the
+    // role it is given, so the caller is still checked there as well.
+    const caller = await requireCapability("attendance:review");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
-    }
-
-    const getUser = new GetUserUseCase(new SupabaseUserRepository());
-    const profile = await getUser.execute(user.id);
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "The account has no user profile." },
-        { status: 403 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const resolveComplaint = new ResolveAttendanceComplaintUseCase(
       new SupabaseAttendanceRepository(),
+      new SupabaseBranchRepository(),
     );
     const record = await resolveComplaint.execute({
       attendanceId: id,
-      resolverId: user.id,
-      resolverRole: profile.role,
+      resolverId: caller.userId,
+      resolverRole: caller.role,
     });
 
     return NextResponse.json(record);
@@ -149,6 +137,14 @@ export async function PATCH(
 
     if (error instanceof AttendanceComplaintForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     if (

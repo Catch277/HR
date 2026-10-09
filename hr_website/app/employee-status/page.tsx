@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { roleLabel } from "@/lib/accessPolicy";
 import type {
   EmployeeStatus,
   EmployeeStatusValue,
@@ -44,12 +45,6 @@ const STATUS_BADGES: Record<EmployeeStatusValue, string> = {
   FINISHED: "bg-teal-50 text-teal-700",
   NO_SHIFT: "bg-slate-100 text-slate-600",
   RESIGNED: "bg-slate-100 text-slate-500",
-};
-
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: "Chủ sở hữu",
-  CHU: "Quản lý chi nhánh",
-  EMPLOYEE: "Nhân viên",
 };
 
 const ALL = "all";
@@ -100,10 +95,6 @@ function initials(fullName: string): string {
     .slice(-2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
-}
-
-function roleLabel(role: string): string {
-  return ROLE_LABELS[role] ?? role;
 }
 
 export default function EmployeeStatusPage() {

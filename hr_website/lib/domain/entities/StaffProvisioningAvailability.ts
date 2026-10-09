@@ -6,7 +6,7 @@ export const STAFF_PROVISIONING_REASONS = [
   "not_deployed",
   /** The function rejected the session token — usually "Verify JWT" turned off for it. */
   "unauthenticated",
-  /** Deployed and reachable, but this account is not OWNER/CHU of an organization. */
+  /** Deployed and reachable, but this account is not the organization's OWNER (SCRUM-59). */
   "not_allowed",
   /** Deployed and reachable, but the function itself answered 5xx (missing secrets, SQL error). */
   "misconfigured",

@@ -4,9 +4,12 @@ import type {
 } from "@/lib/domain/entities/Attendance";
 import { ATTENDANCE_STATUSES } from "@/lib/domain/entities/Attendance";
 import { AttendanceCorrectionForbiddenError } from "@/lib/domain/errors/AttendanceCorrectionForbiddenError";
+import { AttendanceNotFoundError } from "@/lib/domain/errors/AttendanceNotFoundError";
 import type { IAttendanceRepository } from "@/lib/domain/repositories/IAttendanceRepository";
+import type { IBranchRepository } from "@/lib/domain/repositories/IBranchRepository";
+import { isManagerRole } from "@/lib/domain/roles";
+import { assertBranchManagedBy } from "@/lib/usecases/branchScope";
 
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
 const STATUS_SET: ReadonlySet<string> = new Set(ATTENDANCE_STATUSES);
 const MAX_REASON_LENGTH = 500;
 
@@ -19,11 +22,12 @@ export type CorrectAttendanceInput = AttendanceCorrectionInput & {
 export class CorrectAttendanceUseCase {
   constructor(
     private readonly attendanceRepository: IAttendanceRepository,
+    private readonly branchRepository: IBranchRepository,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
   async execute(input: CorrectAttendanceInput): Promise<Attendance> {
-    if (!MANAGER_ROLES.has(input.correctorRole.trim().toUpperCase())) {
+    if (!isManagerRole(input.correctorRole)) {
       throw new AttendanceCorrectionForbiddenError();
     }
 
@@ -49,6 +53,19 @@ export class CorrectAttendanceUseCase {
     ) {
       throw new Error("check_out_at must not be earlier than check_in_at.");
     }
+
+    // SCRUM-61: correcting a timesheet is a branch action, and the record says which branch. Read
+    // before the write so another branch answers `403` instead of "not found".
+    const existing = await this.attendanceRepository.findById(input.attendanceId);
+
+    if (!existing) {
+      throw new AttendanceNotFoundError();
+    }
+
+    await assertBranchManagedBy(this.branchRepository, existing.branch_id, {
+      userId: input.correctorId,
+      role: input.correctorRole,
+    });
 
     return this.attendanceRepository.correct(input.attendanceId, {
       checkInAt: input.checkInAt,

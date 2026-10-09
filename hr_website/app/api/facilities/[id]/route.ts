@@ -3,7 +3,7 @@
  * /api/facilities/{id}:
  *   put:
  *     summary: Update a facility
- *     description: Replaces the editable fields of one facility. Restricted to OWNER/CHU accounts by RLS; a hidden or unknown id answers 404. SCRUM-45.
+ *     description: Replaces the editable fields of one facility. Restricted to managers (`facility:manage`, SCRUM-59) and enforced by RLS; a hidden or unknown id answers 404. SCRUM-45.
  *     tags:
  *       - Facilities
  *     parameters:
@@ -38,6 +38,12 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not manage facilities (SCRUM-59), or they do not head that branch (SCRUM-61).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: The facility does not exist or is not updatable by the caller.
  *         content:
@@ -52,7 +58,7 @@
  *               $ref: '#/components/schemas/ErrorResponse'
  *   delete:
  *     summary: Delete a facility
- *     description: Removes one facility from the registry. Restricted to OWNER/CHU accounts by RLS. SCRUM-45.
+ *     description: Removes one facility from the registry. Restricted to managers (`facility:manage`, SCRUM-59) and enforced by RLS. SCRUM-45.
  *     tags:
  *       - Facilities
  *     parameters:
@@ -86,6 +92,12 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: The caller's role may not manage facilities (SCRUM-59), or they do not head that branch (SCRUM-61).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: The facility does not exist or is not deletable by the caller.
  *         content:
@@ -101,11 +113,14 @@
  */
 import { NextResponse } from "next/server";
 
+import { BranchForbiddenError } from "@/lib/domain/errors/BranchForbiddenError";
+import { BranchNotFoundError } from "@/lib/domain/errors/BranchNotFoundError";
 import { FacilityNotFoundError } from "@/lib/domain/errors/FacilityNotFoundError";
+import { SupabaseBranchRepository } from "@/lib/infrastructure/repositories/SupabaseBranchRepository";
 import { SupabaseFacilityRepository } from "@/lib/infrastructure/repositories/SupabaseFacilityRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { DeleteFacilityUseCase } from "@/lib/usecases/DeleteFacilityUseCase";
 import { UpdateFacilityUseCase } from "@/lib/usecases/UpdateFacilityUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 import { UUID_PATTERN, parseFacilityRequest } from "@/app/api/facilities/_lib/facilityRequest";
 
 export async function PUT(
@@ -136,26 +151,33 @@ export async function PUT(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const caller = await requireCapability("facility:manage");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const updateFacility = new UpdateFacilityUseCase(
       new SupabaseFacilityRepository(),
+      new SupabaseBranchRepository(),
     );
-    const facility = await updateFacility.execute(id, parsed.input);
+    const facility = await updateFacility.execute(id, {
+      ...parsed.input,
+      // SCRUM-61: the stored branch and the destination both have to be the caller's.
+      callerId: caller.userId,
+      callerRole: caller.role,
+    });
 
     return NextResponse.json(facility);
   } catch (error) {
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+
     if (error instanceof FacilityNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
@@ -182,26 +204,32 @@ export async function DELETE(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const caller = await requireCapability("facility:manage");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const deleteFacility = new DeleteFacilityUseCase(
       new SupabaseFacilityRepository(),
+      new SupabaseBranchRepository(),
     );
-    await deleteFacility.execute(id);
+    await deleteFacility.execute(id, {
+      // SCRUM-61: the stored row's branch decides whether this manager may retire it.
+      userId: caller.userId,
+      role: caller.role,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof BranchForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof BranchNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+
     if (error instanceof FacilityNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }

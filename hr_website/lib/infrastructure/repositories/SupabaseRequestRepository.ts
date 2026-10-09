@@ -1,4 +1,5 @@
 import type {
+  CreateRequestInput,
   RequestEntity,
   RequestFilters,
   ReviewRequestInput,
@@ -109,6 +110,51 @@ export class SupabaseRequestRepository implements IRequestRepository {
     // The embedded resource makes PostgREST's inferred row type unusable, so the cast goes
     // through `unknown` and is normalised by `toRequestEntity` instead.
     return ((data ?? []) as unknown as RequestRow[]).map(toRequestEntity);
+  }
+
+  async findById(id: string): Promise<RequestEntity | null> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("requests")
+      .select(REQUEST_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Unable to load the request: ${error.message}`);
+    }
+
+    // RLS scopes the read (SCRUM-60: own rows, or a manager), so a hidden row is simply "no request".
+    return data ? toRequestEntity(data as unknown as RequestRow) : null;
+  }
+
+  async create(
+    input: CreateRequestInput & { userId: string },
+  ): Promise<RequestEntity> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("requests")
+      .insert({
+        branch_id: input.branchId,
+        user_id: input.userId,
+        request_type: input.requestType,
+        title: input.title,
+        content: input.content,
+        // `requests_insert_own` (SCRUM-53) only accepts the caller's own row *and* this exact status,
+        // so the status is written here rather than left to the column default — a tampered body can
+        // never file an already-approved request.
+        status: "PENDING",
+      })
+      // `organization_id` is not sent: its column default is `current_organization_id()`, which is
+      // the same predicate the insert policy checks.
+      .select(REQUEST_COLUMNS)
+      .single();
+
+    if (error) {
+      throw new Error(`Unable to create request: ${error.message}`);
+    }
+
+    return toRequestEntity(data as unknown as RequestRow);
   }
 
   async review(id: string, input: ReviewRequestInput): Promise<RequestEntity> {

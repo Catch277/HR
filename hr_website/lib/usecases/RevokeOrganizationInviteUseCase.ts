@@ -1,7 +1,6 @@
 import { OrganizationForbiddenError } from "@/lib/domain/errors/OrganizationForbiddenError";
 import type { IOrganizationInviteRepository } from "@/lib/domain/repositories/IOrganizationInviteRepository";
-
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
+import { isOwnerRole } from "@/lib/domain/roles";
 
 export type RevokeOrganizationInviteInput = {
   callerRole: string;
@@ -18,7 +17,7 @@ export class RevokeOrganizationInviteUseCase {
   ) {}
 
   async execute(input: RevokeOrganizationInviteInput): Promise<void> {
-    if (!MANAGER_ROLES.has(input.callerRole.trim().toUpperCase())) {
+    if (!isOwnerRole(input.callerRole)) {
       throw new OrganizationForbiddenError();
     }
 

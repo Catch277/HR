@@ -12,7 +12,8 @@
         "required": [
           "id",
           "full_name",
-          "role"
+          "role",
+          "branch_id"
         ],
         "properties": {
           "id": {
@@ -24,6 +25,12 @@
           },
           "role": {
             "type": "string"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Chi nhánh tài khoản thuộc về (SCRUM-63); null nghĩa là chưa gán chi nhánh."
           }
         }
       },
@@ -34,7 +41,8 @@
           "full_name",
           "role",
           "is_active",
-          "created_at"
+          "created_at",
+          "branch_id"
         ],
         "properties": {
           "id": {
@@ -48,10 +56,10 @@
             "type": "string",
             "enum": [
               "OWNER",
-              "CHU",
+              "MANAGER",
               "EMPLOYEE"
             ],
-            "description": "Vai trò hệ thống; OWNER/CHU mới quản lý được nhân sự."
+            "description": "Vai trò hệ thống (SCRUM-59); chỉ OWNER quản lý nhân sự, MANAGER điều hành ca/timesheet/doanh thu."
           },
           "is_active": {
             "type": "boolean",
@@ -60,6 +68,12 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Chi nhánh nhân viên thuộc về (SCRUM-63); null là chưa gán — nhân viên chưa gán chi nhánh không đọc được dữ liệu nào theo chi nhánh và không gửi được đơn."
           }
         }
       },
@@ -116,7 +130,7 @@
           "code": {
             "type": "string",
             "nullable": true,
-            "description": "Mã tham gia của tổ chức; null khi người gọi không phải OWNER/CHU (RLS giữ mã lại)."
+            "description": "Mã tham gia của tổ chức; null khi người gọi không phải OWNER (RLS giữ mã lại)."
           },
           "member_count": {
             "type": "integer",
@@ -163,7 +177,7 @@
             "type": "string",
             "enum": [
               "EMPLOYEE",
-              "CHU"
+              "MANAGER"
             ],
             "description": "Vai trò khi gia nhập; lời mời không bao giờ tạo ra OWNER."
           },
@@ -316,11 +330,17 @@
           },
           "latitude": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "minimum": 8.5436,
+            "maximum": 23.3883,
+            "description": "Vĩ độ, chỉ chấp nhận toạ độ tại Việt Nam (8.5436–23.3883° N)."
           },
           "longitude": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "minimum": 102.0967,
+            "maximum": 109.4944,
+            "description": "Kinh độ, chỉ chấp nhận toạ độ tại Việt Nam (102.0967–109.4944° E)."
           },
           "attendance_radius": {
             "type": "integer",
@@ -688,7 +708,12 @@
           },
           "role": {
             "type": "string",
-            "description": "Vai trò hệ thống: OWNER, CHU hoặc EMPLOYEE."
+            "enum": [
+              "OWNER",
+              "MANAGER",
+              "EMPLOYEE"
+            ],
+            "description": "Vai trò hệ thống: OWNER, MANAGER hoặc EMPLOYEE (SCRUM-59)."
           },
           "branch_id": {
             "type": "string",
@@ -1592,6 +1617,21 @@
           }
         }
       },
+      "ReverseGeocodeResult": {
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Địa chỉ đầy đủ của toạ độ (Nominatim/OpenStreetMap, tiếng Việt); null khi nhà cung cấp không có địa chỉ cho điểm đó.",
+            "example": "128 Lê Lợi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -1611,7 +1651,7 @@
     "/api/users": {
       "get": {
         "summary": "Look up a user, or list the staff directory",
-        "description": "With `?id=<uuid>` returns that profile (id, full name, role). Without `id` returns the\nwhole staff directory (SCRUM-24) including `is_active`, which only an OWNER/CHU may read.\n",
+        "description": "With `?id=<uuid>` returns that profile (id, full name, role). Without `id` returns the\nwhole staff directory (SCRUM-24) including `is_active`, which only a manager\n(OWNER/MANAGER) may read — SCRUM-59 `directory:view`.\n",
         "tags": [
           "Users"
         ],
@@ -1704,7 +1744,7 @@
     "/api/users/{id}": {
       "patch": {
         "summary": "Change a staff member's role or employment state",
-        "description": "SCRUM-24: gives an account a different role (`OWNER`, `CHU`, `EMPLOYEE`) or marks it as\nleft/returned (`is_active`). Restricted to OWNER/CHU, only an OWNER may grant or revoke\nthe OWNER role, and nobody may change their own role or deactivate themselves.\n",
+        "description": "SCRUM-24: gives an account a different role (`OWNER`, `MANAGER`, `EMPLOYEE`) or marks it as\nleft/returned (`is_active`). SCRUM-59 makes this an owner-only action — a manager runs the\noperation but does not hand out accounts; only an `OWNER` may grant or revoke the `OWNER`\nrole, and nobody may change their own role or deactivate themselves.\n",
         "tags": [
           "Users"
         ],
@@ -1734,13 +1774,19 @@
                     "type": "string",
                     "enum": [
                       "OWNER",
-                      "CHU",
+                      "MANAGER",
                       "EMPLOYEE"
                     ]
                   },
                   "is_active": {
                     "type": "boolean",
                     "description": "false means the account has left the company."
+                  },
+                  "branch_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "description": "Chi nhánh làm việc của tài khoản (SCRUM-63, chỉ chủ sở hữu). Bỏ trống là giữ nguyên chi nhánh hiện tại; `null` là tháo gán. `400` khi tài khoản là chủ sở hữu: chủ sở hữu đứng trên mọi chi nhánh nên không thuộc một chi nhánh cụ thể. Một nhân viên chưa gán chi nhánh thì không đọc được dữ liệu nào theo chi nhánh và không gửi được đơn."
                   }
                 }
               }
@@ -1759,7 +1805,7 @@
             }
           },
           "400": {
-            "description": "The id is not a UUID, the body is invalid, or the change would lock the caller out.",
+            "description": "The id is not a UUID, the body is invalid, the branch_id names no branch in your organization or is set on the organization's OWNER (SCRUM-63), or the change would lock the caller out.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1779,7 +1825,7 @@
             }
           },
           "403": {
-            "description": "The caller has no profile, is not a manager, or tried to touch the OWNER role.",
+            "description": "The caller has no profile, is not the organization's OWNER, or tried to touch the OWNER role.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2007,7 +2053,7 @@
       },
       "post": {
         "summary": "Schedule a shift",
-        "description": "Assigns one employee to one shift template on one business date. Answers `409` when the\nsame employee already has an overlapping shift that day (or the exact same template).\nRestricted to OWNER/CHU accounts by RLS.\n",
+        "description": "Assigns one employee to one shift template on one business date. Answers `409` when the\nsame employee already has an overlapping shift that day (or the exact same template).\nRestricted to managers (`schedule:manage`, SCRUM-59) and enforced by RLS.\n",
         "tags": [
           "Schedules"
         ],
@@ -2052,8 +2098,18 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's role may not write the schedule (SCRUM-59), or they do not head the branch the shift belongs to (SCRUM-61).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
-            "description": "The referenced shift template does not exist.",
+            "description": "The referenced shift template does not exist, or the branch is not visible to the caller.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2088,7 +2144,7 @@
     "/api/schedules/{id}": {
       "put": {
         "summary": "Update a shift assignment",
-        "description": "Replaces the employee, branch, template, date, status and note of one assignment. Answers 409 on an overlap and 404 for an unknown or non-updatable row. SCRUM-30.",
+        "description": "Replaces the employee, branch, template, date, status and note of one assignment. Answers 409 on an overlap and 404 for an unknown or non-updatable row. Restricted to managers (`schedule:manage`, SCRUM-59). SCRUM-30.",
         "tags": [
           "Schedules"
         ],
@@ -2144,6 +2200,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's role may not write the schedule (SCRUM-59), or they do not head the branch the shift belongs to (SCRUM-61).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The assignment or the referenced shift template was not found.",
             "content": {
@@ -2178,7 +2244,7 @@
       },
       "delete": {
         "summary": "Delete a shift assignment",
-        "description": "Removes one assignment from the schedule. Restricted to OWNER/CHU accounts by RLS. SCRUM-30.",
+        "description": "Removes one assignment from the schedule. Restricted to managers (`schedule:manage`, SCRUM-59) and enforced by RLS. SCRUM-30.",
         "tags": [
           "Schedules"
         ],
@@ -2224,6 +2290,16 @@
           },
           "401": {
             "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's role may not write the schedule (SCRUM-59), or they do not head the branch the shift belongs to (SCRUM-61).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2351,7 +2427,7 @@
     "/api/revenue/report": {
       "get": {
         "summary": "Get an aggregated revenue report",
-        "description": "Reports closed-shift revenue (close_amount minus open_amount) in the Asia/Bangkok business timezone and compares it with the preceding equivalent period.",
+        "description": "Reports closed-shift revenue (close_amount minus open_amount) in the Asia/Bangkok business\ntimezone and compares it with the preceding equivalent period. SCRUM-59: the report aggregates\nthe organization's operation, so it needs `report:view` — `OWNER` or `MANAGER` only.",
         "tags": [
           "Revenue"
         ],
@@ -2411,6 +2487,9 @@
           "401": {
             "description": "Authentication is required."
           },
+          "403": {
+            "description": "The caller has no user profile, or their role may not read the report (SCRUM-59)."
+          },
           "500": {
             "description": "An unexpected server error occurred."
           }
@@ -2420,7 +2499,7 @@
     "/api/revenue/open": {
       "post": {
         "summary": "Declare opening revenue for a branch",
-        "description": "Creates one opening-revenue declaration per branch for the current business day (Asia/Bangkok).",
+        "description": "Creates one opening-revenue declaration per branch for the current business day (Asia/Bangkok).\nSCRUM-59: the declaration is a manager action (`revenue:manage`), so `OWNER` and `MANAGER` may\ndeclare it while an `EMPLOYEE` gets `403`.",
         "tags": [
           "Revenue"
         ],
@@ -2467,6 +2546,12 @@
           "401": {
             "description": "Authentication is required."
           },
+          "403": {
+            "description": "The caller has no user profile, their role may not declare revenue (SCRUM-59), or they do not head that branch (SCRUM-61)."
+          },
+          "404": {
+            "description": "The branch does not exist or is not visible to the caller."
+          },
           "409": {
             "description": "Opening revenue was already declared for this branch today."
           },
@@ -2479,7 +2564,7 @@
     "/api/revenue/close": {
       "put": {
         "summary": "Declare closing revenue for a branch",
-        "description": "Closes the current business day's opening-revenue record for a branch (Asia/Bangkok).",
+        "description": "Closes the current business day's opening-revenue record for a branch (Asia/Bangkok).\nSCRUM-59: closing is a manager action (`revenue:manage`), so `OWNER` and `MANAGER` may close a\nday while an `EMPLOYEE` gets `403`.",
         "tags": [
           "Revenue"
         ],
@@ -2549,6 +2634,9 @@
           },
           "401": {
             "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The caller has no user profile, their role may not declare revenue (SCRUM-59), or they do not head that branch (SCRUM-61)."
           },
           "404": {
             "description": "No opening-revenue declaration exists for this branch today."
@@ -2635,12 +2723,124 @@
             }
           }
         }
+      },
+      "post": {
+        "summary": "Submit a request",
+        "description": "Files the caller's own đơn (SCRUM-41: nghỉ phép, đổi ca, điều chỉnh công) as `PENDING` for a\nmanager to review. This is the submit half of the ticket — the queue above can only fill if\nsomebody writes a row, and nothing else in this app inserts into `public.requests`.\nThe requester always comes from the session (`requests_insert_own` refuses a row whose\n`user_id` is not the caller), and every role holds `request:create` **except the\norganization's `OWNER`** (SCRUM-63): the owner sits above the approval chain and reviews the\nqueue instead of filing into it.\n",
+        "tags": [
+          "Requests"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "branch_id",
+                  "request_type",
+                  "title"
+                ],
+                "properties": {
+                  "branch_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Chi nhánh liên quan (public.branches.id); một chi nhánh bạn không nhìn thấy được trả về 404."
+                  },
+                  "request_type": {
+                    "type": "string",
+                    "enum": [
+                      "Nghỉ phép",
+                      "Đổi ca",
+                      "Điều chỉnh công",
+                      "Khác"
+                    ],
+                    "description": "Loại đơn, đúng giá trị của REQUEST_TYPES trong lib/domain/entities/RequestEntity.ts."
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "example": "Xin nghỉ phép ngày 12/10"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "nullable": true,
+                    "description": "Nội dung chi tiết; bỏ trống hoặc null là đơn không có ghi chú thêm."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored request, with its requester embedded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestEntity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The JSON body is invalid, request_type is unknown, or title/content is blank or too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account has no user profile, the role may not file a request (SCRUM-59 — the organization's OWNER never does, SCRUM-63), the account is not assigned to a branch yet, or it names a branch other than its own (SCRUM-63).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The branch does not exist or is not visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/requests/{id}/review": {
       "patch": {
         "summary": "Approve or reject a request",
-        "description": "Sets `requests.status` together with `reject_reason` and `approver_id`. Restricted to\nOWNER/CHU accounts: the use case checks the caller's role and the\n`requests_update_managers` RLS policy (SCRUM-41) repeats the check in the database.\n",
+        "description": "Sets `requests.status` together with `reject_reason` and `approver_id`. Restricted to\nmanagers (SCRUM-59 `request:review`): the route answers `403` for another role, the use\ncase repeats the check and the `requests_update_managers` RLS policy (SCRUM-41) repeats it\nin the database.\n",
         "tags": [
           "Requests"
         ],
@@ -2715,7 +2915,7 @@
             }
           },
           "403": {
-            "description": "The caller has no user profile, or the role may not review requests.",
+            "description": "The caller has no user profile, the role may not review requests, they do not head the branch the request belongs to (SCRUM-61), or the request is their own (SCRUM-63 — only the organization's OWNER may review their own đơn).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2841,7 +3041,7 @@
     "/api/organizations/join": {
       "post": {
         "summary": "Join an organization with its code",
-        "description": "SCRUM-51: joins the caller's account to the organization that owns the code. Two things\nmust be true, and the database checks both: the code must match `organization_join_codes`,\nand the caller's email must be on that organization's register (`organization_invites`) and\nunclaimed. An outsider who obtains the code therefore gets `403` — this is the point of the\ninvite list. Ten failed attempts per hour are refused with `429`. A `CHU` invite grants the\nmanager role; an invite can never mint an OWNER.\n",
+        "description": "SCRUM-51: joins the caller's account to the organization that owns the code. Two things\nmust be true, and the database checks both: the code must match `organization_join_codes`,\nand the caller's email must be on that organization's register (`organization_invites`) and\nunclaimed. An outsider who obtains the code therefore gets `403` — this is the point of the\ninvite list. Ten failed attempts per hour are refused with `429`. A `MANAGER` invite grants\nthe manager role; an invite can never mint an OWNER.\n",
         "tags": [
           "Organizations"
         ],
@@ -2941,7 +3141,7 @@
     "/api/organizations/invites": {
       "get": {
         "summary": "List the organization's invites",
-        "description": "SCRUM-51: the register of accounts the organization knows — both `invite` rows (an owner\nasked an existing account to join) and `provisioned` rows (an owner created the account and\nhanded over a temporary password, SCRUM-52). `claimed_at` says whether the person has\njoined. OWNER/CHU only; RLS hides other organizations' rows.\n",
+        "description": "SCRUM-51: the register of accounts the organization knows — both `invite` rows (an owner\nasked an existing account to join) and `provisioned` rows (an owner created the account and\nhanded over a temporary password, SCRUM-52). `claimed_at` says whether the person has\njoined. OWNER only (SCRUM-59 `organization:manage`); RLS hides other organizations' rows.\n",
         "tags": [
           "Organizations"
         ],
@@ -3003,7 +3203,7 @@
       },
       "post": {
         "summary": "Invite an existing account to the organization",
-        "description": "SCRUM-51: puts an email on the organization's register. The person keeps their own password\n(this is the path for somebody who already signed up); the invite is what makes the join\ncode usable for them, and `role` is capped at `CHU` — an invite never mints an OWNER.\n",
+        "description": "SCRUM-51: puts an email on the organization's register. The person keeps their own password\n(this is the path for somebody who already signed up); the invite is what makes the join\ncode usable for them, and `role` is capped at `MANAGER` — an invite never mints an OWNER.\n",
         "tags": [
           "Organizations"
         ],
@@ -3030,7 +3230,7 @@
                     "type": "string",
                     "enum": [
                       "EMPLOYEE",
-                      "CHU"
+                      "MANAGER"
                     ],
                     "default": "EMPLOYEE"
                   }
@@ -3116,7 +3316,7 @@
     "/api/organizations/invites/{id}": {
       "delete": {
         "summary": "Revoke an organization invite",
-        "description": "SCRUM-51: withdraws an invite that has not been claimed, so that address can no longer\nspend the join code. Removing somebody who already joined is a staff action instead\n(`is_active = false` on `/staff`). OWNER/CHU only; another organization's invite is a `404`.\n",
+        "description": "SCRUM-51: withdraws an invite that has not been claimed, so that address can no longer\nspend the join code. Removing somebody who already joined is a staff action instead\n(`is_active = false` on `/staff`). OWNER only (SCRUM-59); another organization's invite is a `404`.\n",
         "tags": [
           "Organizations"
         ],
@@ -3206,7 +3406,7 @@
     "/api/organizations/current": {
       "get": {
         "summary": "Get the caller's organization",
-        "description": "SCRUM-51: the organization of the signed-in account plus its member and pending-invite\ncounts. `organization` is null while the caller has not created or joined one, which is\nwhat the onboarding gate uses. `code` is null unless the caller is OWNER/CHU — the join\ncode is hidden by RLS, not by a check here.\n",
+        "description": "SCRUM-51: the organization of the signed-in account plus its member and pending-invite\ncounts. `organization` is null while the caller has not created or joined one, which is\nwhat the onboarding gate uses. `code` is null unless the caller is the organization's OWNER\n(SCRUM-59) — the join code is hidden by RLS, not by a check here.\n",
         "tags": [
           "Organizations"
         ],
@@ -3255,7 +3455,7 @@
       },
       "patch": {
         "summary": "Rename the organization or rotate its join code",
-        "description": "SCRUM-51: `name` renames the organization (OWNER/CHU) and `rotate_code: true` replaces the\njoin code (OWNER only) — the old code stops working immediately, which is how an owner cuts\noff a code that leaked without touching the invites of the people they meant to add.\n",
+        "description": "SCRUM-51 + SCRUM-59: both `name` (rename) and `rotate_code: true` are owner actions\n(`organization:manage`), so a `MANAGER` gets `403`. The old code stops working immediately,\nwhich is how an owner cuts off a code that leaked without touching the invites of the\npeople they meant to add.\n",
         "tags": [
           "Organizations"
         ],
@@ -3310,7 +3510,7 @@
             }
           },
           "403": {
-            "description": "The account has no profile, is not a manager, or is not the OWNER for a rotation.",
+            "description": "The account has no profile, or the caller is not the organization's OWNER (SCRUM-59).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3345,7 +3545,7 @@
     "/api/organizations/accounts": {
       "get": {
         "summary": "Is the staff account service available?",
-        "description": "SCRUM-52: probes the `staff-account` Edge Function with the caller's own token and reports\n*why* it is unusable, not merely that it is. `reason` separates \"not deployed\" (an operator\ntask) from \"not allowed\" (this account is not OWNER/CHU of an organization), \"unauthenticated\"\n(the function refused the session token) and \"misconfigured\" (deployed but answering 5xx, for\nexample missing secrets). The Tổ chức screen offers the provisioning form only for `ready`.\n",
+        "description": "SCRUM-52: probes the `staff-account` Edge Function with the caller's own token and reports\n*why* it is unusable, not merely that it is. `reason` separates \"not deployed\" (an operator\ntask) from \"not allowed\" (this account is not the organization's OWNER), \"unauthenticated\"\n(the function refused the session token) and \"misconfigured\" (deployed but answering 5xx, for\nexample missing secrets). The Tổ chức screen offers the provisioning form only for `ready`.\n",
         "tags": [
           "Organizations"
         ],
@@ -3409,7 +3609,7 @@
       },
       "post": {
         "summary": "Create a staff account with a temporary password",
-        "description": "SCRUM-52: asks the `staff-account` Edge Function — the only holder of the service-role key —\nto create a real Supabase Auth account for a colleague, with the temporary password the\nowner typed. The account is added to the organization's register (`source = provisioned`)\nand must change that password on first sign-in; it then joins with the organization code\nlike any other invited account. OWNER/CHU of the organization only.\n",
+        "description": "SCRUM-52: asks the `staff-account` Edge Function — the only holder of the service-role key —\nto create a real Supabase Auth account for a colleague, with the temporary password the\nowner typed. The account is added to the organization's register (`source = provisioned`)\nand must change that password on first sign-in; it then joins with the organization code\nlike any other invited account. OWNER of the organization only (SCRUM-59 `organization:manage`).\n",
         "tags": [
           "Organizations"
         ],
@@ -3437,7 +3637,7 @@
                     "type": "string",
                     "enum": [
                       "EMPLOYEE",
-                      "CHU"
+                      "MANAGER"
                     ],
                     "default": "EMPLOYEE"
                   },
@@ -3493,7 +3693,7 @@
             }
           },
           "409": {
-            "description": "The email already has an account or already belongs to the organization.",
+            "description": "The email already has an account or already belongs to the organization. The two causes are\ntold apart by `error`, which carries the `staff-account` function's own sentence: \"already a\nmember\" means the register row is claimed, anything else means the address merely has its own\nSupabase Auth login and can join with the code instead of being provisioned again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3849,6 +4049,91 @@
         }
       }
     },
+    "/api/geo/reverse": {
+      "get": {
+        "summary": "Turn a coordinate into an address",
+        "description": "Reverse geocoding for the branch form: the pin on the map becomes the \"Địa chỉ\" text, so the\noperator does not have to type it. Addresses come from Nominatim (OpenStreetMap) — the same\nproject the branch map draws its tiles from — and need no API key. The coordinate must be\ninside Vietnamese territory, exactly the rule the geofence itself enforces. `address` is\nnull when the provider knows no address for that point; `503` when it cannot be reached.\n",
+        "tags": [
+          "Branches"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "latitude",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": 8.5436,
+              "maximum": 23.3883
+            },
+            "description": "Vĩ độ của điểm cần tra cứu."
+          },
+          {
+            "in": "query",
+            "name": "longitude",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": 102.0967,
+              "maximum": 109.4944
+            },
+            "description": "Kinh độ của điểm cần tra cứu."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The address of the coordinate, or null when the provider has none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseGeocodeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The coordinates are missing, not numbers, out of range, or outside Vietnam.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The address lookup service is not available; type the address instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/facilities": {
       "get": {
         "summary": "List facilities",
@@ -3901,6 +4186,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's role may not read the inventory (SCRUM-59, manager and above).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "An unexpected server error occurred.",
             "content": {
@@ -3915,7 +4210,7 @@
       },
       "post": {
         "summary": "Create a facility",
-        "description": "Registers one facility of a branch. Restricted to OWNER/CHU accounts by RLS.",
+        "description": "Registers one facility of a branch. Restricted to managers (`facility:manage`, SCRUM-59) and enforced by RLS.",
         "tags": [
           "Facilities"
         ],
@@ -3960,6 +4255,19 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's role may not manage facilities (SCRUM-59), or they do not head that branch (SCRUM-61)."
+          },
+          "404": {
+            "description": "The branch does not exist or is not visible to the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "An unexpected server error occurred.",
             "content": {
@@ -3976,7 +4284,7 @@
     "/api/facilities/{id}": {
       "put": {
         "summary": "Update a facility",
-        "description": "Replaces the editable fields of one facility. Restricted to OWNER/CHU accounts by RLS; a hidden or unknown id answers 404. SCRUM-45.",
+        "description": "Replaces the editable fields of one facility. Restricted to managers (`facility:manage`, SCRUM-59) and enforced by RLS; a hidden or unknown id answers 404. SCRUM-45.",
         "tags": [
           "Facilities"
         ],
@@ -4032,6 +4340,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's role may not manage facilities (SCRUM-59), or they do not head that branch (SCRUM-61).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The facility does not exist or is not updatable by the caller.",
             "content": {
@@ -4056,7 +4374,7 @@
       },
       "delete": {
         "summary": "Delete a facility",
-        "description": "Removes one facility from the registry. Restricted to OWNER/CHU accounts by RLS. SCRUM-45.",
+        "description": "Removes one facility from the registry. Restricted to managers (`facility:manage`, SCRUM-59) and enforced by RLS. SCRUM-45.",
         "tags": [
           "Facilities"
         ],
@@ -4110,6 +4428,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's role may not manage facilities (SCRUM-59), or they do not head that branch (SCRUM-61).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The facility does not exist or is not deletable by the caller.",
             "content": {
@@ -4136,7 +4464,7 @@
     "/api/employee-status": {
       "get": {
         "summary": "Get the live employee status of one business day",
-        "description": "One row per person for the day (SCRUM-22), derived from `shift_assignments` and\n`attendance` by the `get_employee_status` RPC: đang làm việc, chưa vào ca, nghỉ phép,\nđã tan ca, không có ca hôm nay or nghỉ việc. The day defaults to today in Asia/Bangkok.\n",
+        "description": "One row per person for the day (SCRUM-22), derived from `shift_assignments` and\n`attendance` by the `get_employee_status` RPC: đang làm việc, chưa vào ca, nghỉ phép,\nđã tan ca, không có ca hôm nay or nghỉ việc. The day defaults to today in Asia/Bangkok.\nSCRUM-59: giám sát nhân sự is a management view (`employee-status:view`), so a plain\nemployee gets `403`; SCRUM-60 narrows the rows `get_employee_status` may return.\n",
         "tags": [
           "Employees"
         ],
@@ -4204,6 +4532,16 @@
           },
           "401": {
             "description": "Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller has no user profile, or their role may not read the roster (SCRUM-59).",
             "content": {
               "application/json": {
                 "schema": {
@@ -4358,7 +4696,7 @@
       },
       "post": {
         "summary": "Create a branch",
-        "description": "Creates a branch together with its GPS geofence. Restricted to OWNER/CHU accounts by RLS.",
+        "description": "Creates a branch together with its GPS geofence. Restricted to the organization's OWNER (`branch:manage`, SCRUM-59) and enforced by RLS.",
         "tags": [
           "Branches"
         ],
@@ -4386,21 +4724,24 @@
                   "manager_id": {
                     "type": "string",
                     "format": "uuid",
-                    "nullable": true
+                    "nullable": true,
+                    "description": "Chi nhánh trưởng — `public.users.id` của một tài khoản MANAGER trong tổ chức của bạn (SCRUM-63: chủ sở hữu đứng trên mọi chi nhánh nên không phụ trách một chi nhánh cụ thể); bỏ trống hoặc null là chưa gán. `400` khi id không trỏ tới tài khoản nào mà bạn nhìn thấy được, hoặc trỏ tới một nhân viên hay chủ sở hữu."
                   },
                   "latitude": {
                     "type": "number",
-                    "minimum": -90,
-                    "maximum": 90,
+                    "minimum": 8.5436,
+                    "maximum": 23.3883,
                     "nullable": true,
-                    "example": 10.7725
+                    "example": 10.7725,
+                    "description": "Vĩ độ; phải nằm trên lãnh thổ Việt Nam — kiểm tra theo đường bờ biển thật (lib/geo/vietnamOutline.ts), không chỉ theo khung 8.5436–23.3883° N."
                   },
                   "longitude": {
                     "type": "number",
-                    "minimum": -180,
-                    "maximum": 180,
+                    "minimum": 102.0967,
+                    "maximum": 109.4944,
                     "nullable": true,
-                    "example": 106.698
+                    "example": 106.698,
+                    "description": "Kinh độ; phải nằm trên lãnh thổ Việt Nam — kiểm tra theo đường bờ biển thật (lib/geo/vietnamOutline.ts), không chỉ theo khung 102.0967–109.4944° E."
                   },
                   "attendance_radius": {
                     "type": "integer",
@@ -4426,10 +4767,13 @@
             }
           },
           "400": {
-            "description": "The request body is invalid."
+            "description": "The request body is invalid, including a manager_id that names no account in your organization or names an account that is not a MANAGER (SCRUM-63)."
           },
           "401": {
             "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The caller's role may not manage branches (SCRUM-59, owner only)."
           },
           "500": {
             "description": "An unexpected server error occurred."
@@ -4440,7 +4784,7 @@
     "/api/branches/{id}": {
       "put": {
         "summary": "Update a branch",
-        "description": "Replaces the editable fields of one branch (name, address, manager, GPS geofence). Restricted to OWNER/CHU accounts by RLS.",
+        "description": "Replaces the editable fields of one branch (name, address, manager, GPS geofence). SCRUM-59 made\nthis an owner action; SCRUM-61 extends it to the **chi nhánh trưởng** of that very branch\n(`branch:update`), who manages only their own — editing another branch answers `403`. Only the\norganization's OWNER may change `manager_id`, because that field is what grants a manager their\nscope. RLS repeats both rules (`public.heads_branch()` / `branches_guard_manager_change`).",
         "tags": [
           "Branches"
         ],
@@ -4478,19 +4822,22 @@
                   "manager_id": {
                     "type": "string",
                     "format": "uuid",
-                    "nullable": true
+                    "nullable": true,
+                    "description": "Chi nhánh trưởng — `public.users.id` của một tài khoản OWNER/MANAGER trong tổ chức của bạn; null để bỏ gán. `400` khi id không trỏ tới tài khoản nào mà bạn nhìn thấy được, hoặc trỏ tới một nhân viên (SCRUM-61)."
                   },
                   "latitude": {
                     "type": "number",
-                    "minimum": -90,
-                    "maximum": 90,
-                    "nullable": true
+                    "minimum": 8.5436,
+                    "maximum": 23.3883,
+                    "nullable": true,
+                    "description": "Vĩ độ; phải nằm trên lãnh thổ Việt Nam — kiểm tra theo đường bờ biển thật (lib/geo/vietnamOutline.ts), không chỉ theo khung 8.5436–23.3883° N."
                   },
                   "longitude": {
                     "type": "number",
-                    "minimum": -180,
-                    "maximum": 180,
-                    "nullable": true
+                    "minimum": 102.0967,
+                    "maximum": 109.4944,
+                    "nullable": true,
+                    "description": "Kinh độ; phải nằm trên lãnh thổ Việt Nam — kiểm tra theo đường bờ biển thật (lib/geo/vietnamOutline.ts), không chỉ theo khung 102.0967–109.4944° E."
                   },
                   "attendance_radius": {
                     "type": "integer",
@@ -4515,13 +4862,114 @@
             }
           },
           "400": {
-            "description": "The route parameter or request body is invalid."
+            "description": "The route parameter or request body is invalid, including a manager_id that names no account in your organization or names an account that is not an OWNER/MANAGER (SCRUM-61)."
           },
           "401": {
             "description": "Authentication is required."
           },
+          "403": {
+            "description": "The caller may not update this branch — neither the organization's OWNER nor its chi nhánh trưởng (SCRUM-61) — or tried to change who heads it."
+          },
           "404": {
             "description": "No branch exists with the supplied ID, or the caller may not update it."
+          },
+          "500": {
+            "description": "An unexpected server error occurred."
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a branch",
+        "description": "Removes one branch (SCRUM-61). Owner only (`branch:manage`): a chi nhánh trưởng runs the branch\nthey head, they do not delete it. The branch must be empty first — `attendance`,\n`shift_assignments` and `facilities` are `on delete cascade` and `daily_revenue.branch_id` has no\nforeign key, so deleting would destroy or orphan that history; instead of cascading, `409`\nreports how much is still there and those rows have to be moved or removed first.\n`branches_guard_delete` repeats the same check in the database.",
+        "tags": [
+          "Branches"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The branch UUID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The branch was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The caller's role may not manage branches (SCRUM-59, owner only)."
+          },
+          "404": {
+            "description": "The branch does not exist or is not deletable by the caller."
+          },
+          "409": {
+            "description": "The branch still holds attendance, shift, facility or revenue rows; `error` names the counts to move or remove first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dependents": {
+                          "type": "object",
+                          "description": "How many rows still point at the branch (`null` when `branches_guard_delete` refused the write on its own).",
+                          "properties": {
+                            "attendance": {
+                              "type": "integer"
+                            },
+                            "assignments": {
+                              "type": "integer"
+                            },
+                            "facilities": {
+                              "type": "integer"
+                            },
+                            "revenue": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "500": {
             "description": "An unexpected server error occurred."
@@ -4942,7 +5390,7 @@
     "/api/attendance/{id}": {
       "patch": {
         "summary": "Correct an attendance record",
-        "description": "Fixes the times, status and note of one record (SCRUM-23) and stamps `corrected_by`,\n`corrected_at` and `correction_reason`, so a manager can repair a wrong timesheet that\npayroll would otherwise trust. Restricted to OWNER/CHU: the use case checks the role and\nthe `attendance_update_managers` RLS policy repeats it in the database. The reason is\nmandatory.\n",
+        "description": "Fixes the times, status and note of one record (SCRUM-23) and stamps `corrected_by`,\n`corrected_at` and `correction_reason`, so a manager can repair a wrong timesheet that\npayroll would otherwise trust. Restricted to managers (SCRUM-59 `attendance:review`): the\nroute answers `403` for another role, the use case repeats the check and the\n`attendance_update_managers` RLS policy repeats it in the database. The reason is\nmandatory.\n",
         "tags": [
           "Attendance"
         ],
@@ -5034,7 +5482,7 @@
             }
           },
           "403": {
-            "description": "The caller has no user profile, or the role may not correct records.",
+            "description": "The caller has no user profile, the role may not correct records, or they do not head that branch (SCRUM-61).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5069,7 +5517,7 @@
     "/api/attendance/{id}/verify": {
       "patch": {
         "summary": "Verify an attendance record",
-        "description": "Stamps `verified_by` and `verified_at` on one record: this is the web review action of\nSCRUM-22 (toạ độ + ảnh xác minh + trạng thái hợp lệ). Restricted to OWNER/CHU accounts,\nand the `attendance_update_managers` RLS policy repeats the check in the database.\n",
+        "description": "Stamps `verified_by` and `verified_at` on one record: this is the web review action of\nSCRUM-22 (toạ độ + ảnh xác minh + trạng thái hợp lệ). Restricted to managers (SCRUM-59\n`attendance:review`), and the `attendance_update_managers` RLS policy repeats the check in\nthe database.\n",
         "tags": [
           "Attendance"
         ],
@@ -5116,7 +5564,7 @@
             }
           },
           "403": {
-            "description": "The caller has no user profile, or the role may not verify records.",
+            "description": "The caller has no user profile, the role may not verify records, or they do not head that branch (SCRUM-61).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5151,7 +5599,7 @@
     "/api/attendance/complaints": {
       "post": {
         "summary": "Record a complaint against an attendance record",
-        "description": "Stores the employee's khiếu nại (SCRUM-29) with the current timestamp. The employee on\nthe record may raise it themselves, and an OWNER/CHU manager may raise it for them (the\ncomplaint usually arrives by phone); anyone else is refused with `403`.\n",
+        "description": "Stores the employee's khiếu nại (SCRUM-29) with the current timestamp. The employee on\nthe record may raise it themselves, and a manager (OWNER/MANAGER) may raise it for them\n(the complaint usually arrives by phone); anyone else is refused with `403`.\n",
         "tags": [
           "Attendance"
         ],
@@ -5212,7 +5660,7 @@
             }
           },
           "403": {
-            "description": "The caller is neither the employee on the record nor an OWNER/CHU manager.",
+            "description": "The caller is neither the employee on the record nor a manager of that branch (SCRUM-61, a manager acts only for the branch they head).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5222,7 +5670,7 @@
             }
           },
           "404": {
-            "description": "The attendance record does not exist.",
+            "description": "The attendance record does not exist, or its branch is not visible to the caller.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5247,7 +5695,7 @@
     "/api/attendance/complaints/{id}": {
       "patch": {
         "summary": "Resolve a complaint on an attendance record",
-        "description": "Closes an open khiếu nại (SCRUM-23): sets `complaint_status` to `RESOLVED` and stamps\n`complaint_resolved_by` / `complaint_resolved_at`. Only OWNER/CHU may resolve one, while\nthe employee on the record may raise it (POST /api/attendance/complaints).\n",
+        "description": "Closes an open khiếu nại (SCRUM-23): sets `complaint_status` to `RESOLVED` and stamps\n`complaint_resolved_by` / `complaint_resolved_at`. Only a manager (OWNER/MANAGER) may resolve\none — SCRUM-59 `attendance:review` — while the employee on the record may raise it\n(POST /api/attendance/complaints).\n",
         "tags": [
           "Attendance"
         ],
@@ -5316,7 +5764,7 @@
             }
           },
           "403": {
-            "description": "The caller has no user profile, or the role may not resolve complaints.",
+            "description": "The caller has no user profile, the role may not resolve complaints, or they do not head that branch (SCRUM-61).",
             "content": {
               "application/json": {
                 "schema": {

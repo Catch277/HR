@@ -1,7 +1,26 @@
 "use client";
 
-import { Check, Clock3, Loader2, RefreshCw, Search, X } from "lucide-react";
+import {
+  Check,
+  Clock3,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Send,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+import { useProfile } from "@/components/ProfileProvider";
+import { canManageBranch, defaultBranchId } from "@/lib/domain/branchScope";
+import {
+  MAX_REQUEST_CONTENT_LENGTH,
+  MAX_REQUEST_TITLE_LENGTH,
+  REQUEST_TYPES,
+  type RequestType,
+} from "@/lib/domain/entities/RequestEntity";
+import { isManagerRole } from "@/lib/domain/roles";
 
 type RequestEntity = {
   id: string;
@@ -18,7 +37,8 @@ type RequestEntity = {
   requester: { id: string; full_name: string } | null;
 };
 
-type Branch = { id: string; name: string };
+// SCRUM-61 needs `manager_id`: it is what says whether the caller heads the branch.
+type Branch = { id: string; name: string; manager_id: string | null };
 
 type LoadResult = {
   requests: RequestEntity[];
@@ -27,6 +47,24 @@ type LoadResult = {
 };
 
 type RejectTarget = { id: string; label: string };
+
+/** The submit dialog: one đơn for one branch, cleared with `value.trim() || null` on the way out. */
+type RequestForm = {
+  branchId: string;
+  requestType: RequestType;
+  title: string;
+  content: string;
+};
+
+const EMPTY_FORM: RequestForm = {
+  branchId: "",
+  requestType: REQUEST_TYPES[0],
+  title: "",
+  content: "",
+};
+
+const inputClassName =
+  "mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Chờ duyệt",
@@ -96,8 +134,30 @@ function initials(fullName: string | undefined): string {
 }
 
 export default function RequestsPage() {
+  // SCRUM-59/61: every role reads its own requests (`request:view`, narrowed by SCRUM-60's RLS), but
+  // approving or rejecting needs `request:review` — and only for a branch the caller heads. An
+  // employee, and a manager outside their branch, get a status list instead of the decision buttons.
+  const { profile, can } = useProfile();
+  const viewerId = profile?.id ?? null;
+  const managesAllBranches = can("branch:manage");
   const [requests, setRequests] = useState<RequestEntity[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+
+  // SCRUM-61: a manager reviews their own branch's requests; the owner reviews every request,
+  // including one that lost its branch (`branch_id` is `on delete set null`).
+  const manageableIds = new Set(
+    branches
+      .filter((branch) =>
+        canManageBranch(branch, { userId: viewerId, managesAllBranches }),
+      )
+      .map((branch) => branch.id),
+  );
+  const canReview = (request: RequestEntity) =>
+    can("request:review") &&
+    (managesAllBranches || manageableIds.has(request.branch_id)) &&
+    // SCRUM-63: a branch head cannot decide their own đơn; the owner is the one role that may,
+    // because nobody sits above them (`ReviewRequestUseCase` repeats this).
+    (request.user_id !== viewerId || managesAllBranches);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [tab, setTab] = useState(ALL);
@@ -106,6 +166,20 @@ export default function RequestsPage() {
   const [rejectTarget, setRejectTarget] = useState<RejectTarget | null>(null);
   const [reason, setReason] = useState("");
   const [reviewingId, setReviewingId] = useState("");
+
+  // The submit half of SCRUM-41 (every member holds `request:create` except the owner, who reviews
+  // instead of filing — SCRUM-63). Until this dialog existed the screen could only review đơn: nothing
+  // in the app ever wrote the row the queue was waiting for.
+  //
+  // SCRUM-63: an employee belongs to one branch, so their đơn is filed there — and an account with no
+  // branch cannot file at all, which is why the button is hidden rather than answered with a `403`.
+  const ownBranchId = profile?.branch_id ?? null;
+  const isManager = isManagerRole(profile?.role);
+  const canSubmit = can("request:create") && (isManager || ownBranchId !== null);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [form, setForm] = useState<RequestForm>(EMPTY_FORM);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Bumping the token re-runs the effect below; keeping the fetch inside the effect (instead
   // of a callback the effect calls) avoids setting state synchronously during render.
@@ -227,7 +301,7 @@ export default function RequestsPage() {
     }
 
     if (status === 403) {
-      return "Tài khoản của bạn không có quyền duyệt đơn (chỉ OWNER hoặc CHU).";
+      return "Tài khoản của bạn không có quyền duyệt đơn (chỉ chủ sở hữu hoặc quản lý).";
     }
 
     if (status === 404) {
@@ -273,6 +347,93 @@ export default function RequestsPage() {
     }
   }
 
+  function openSubmit() {
+    // A branch head starts on the branch they head, an employee on the first branch they can see.
+    // Filing a request is not a branch *write*, so no branch is disabled here: a person may ask for
+    // leave at a branch they do not manage — but an employee (SCRUM-63) only files for the branch
+    // they belong to, so for them there is nothing to choose.
+    setForm({
+      ...EMPTY_FORM,
+      branchId: isManager
+        ? defaultBranchId(branches, {
+            userId: viewerId,
+            managesAllBranches,
+          })
+        : (ownBranchId ?? ""),
+    });
+    setFormError("");
+    setSubmitOpen(true);
+  }
+
+  function closeSubmit() {
+    setSubmitOpen(false);
+    setFormError("");
+  }
+
+  function submitErrorMessage(status: number): string {
+    if (status === 401) {
+      return "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.";
+    }
+
+    if (status === 403) {
+      return "Tài khoản của bạn không có quyền gửi đơn.";
+    }
+
+    if (status === 404) {
+      return "Không tìm thấy chi nhánh đã chọn. Vui lòng chọn lại chi nhánh.";
+    }
+
+    if (status === 400) {
+      return "Nội dung đơn không hợp lệ. Vui lòng kiểm tra lại tiêu đề và ghi chú.";
+    }
+
+    return "Không thể gửi đơn. Vui lòng thử lại.";
+  }
+
+  async function submitRequest() {
+    if (!form.branchId) {
+      setFormError("Vui lòng chọn chi nhánh.");
+      return;
+    }
+
+    if (!form.title.trim()) {
+      setFormError("Vui lòng nhập tiêu đề đơn.");
+      return;
+    }
+
+    setSaving(true);
+    setFormError("");
+
+    try {
+      const response = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branch_id: form.branchId,
+          request_type: form.requestType,
+          title: form.title.trim(),
+          // A blank note travels as null, never as an empty string.
+          content: form.content.trim() || null,
+        }),
+      });
+
+      if (!response.ok) {
+        setFormError(submitErrorMessage(response.status));
+        return;
+      }
+
+      closeSubmit();
+      // The new đơn is `PENDING`, so jump back to the tab that shows it instead of leaving the
+      // caller on a status filter where nothing seems to have happened.
+      setTab(ALL);
+      refresh();
+    } catch {
+      setFormError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
@@ -281,21 +442,35 @@ export default function RequestsPage() {
             Nhân sự / SCRUM-41
           </p>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Quản lý duyệt đơn
+            {can("request:review") ? "Quản lý duyệt đơn" : "Đơn từ của tôi"}
           </h1>
           <p className="mt-1 text-xs text-slate-500">
-            Duyệt hoặc từ chối đơn nghỉ phép, đổi ca và điều chỉnh công của nhân viên.
+            {can("request:review")
+              ? "Duyệt hoặc từ chối đơn nghỉ phép, đổi ca và điều chỉnh công của nhân viên."
+              : "Theo dõi trạng thái những đơn bạn đã gửi: nghỉ phép, đổi ca và điều chỉnh công."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={loading}
-          className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
-          Làm mới
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+          {canSubmit && (
+            <button
+              type="button"
+              onClick={openSubmit}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
+            >
+              <Plus size={14} />
+              Tạo đơn
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-surface px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
+            Làm mới
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -428,7 +603,11 @@ export default function RequestsPage() {
                 <tr className="border-t border-slate-100">
                   <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                     {requests.length === 0
-                      ? "Chưa có đơn nào được gửi"
+                      ? canSubmit
+                        ? "Chưa có đơn nào được gửi — bấm “Tạo đơn” để gửi đơn đầu tiên"
+                        : can("request:create") && ownBranchId === null
+                          ? "Bạn chưa được gán chi nhánh — nhờ chủ sở hữu gán chi nhánh ở trang Quản lý nhân sự để gửi đơn"
+                          : "Chưa có đơn nào được gửi"
                       : "Không có đơn phù hợp bộ lọc hiện tại"}
                   </td>
                 </tr>
@@ -490,7 +669,13 @@ export default function RequestsPage() {
                       )}
                     </td>
                     <td className="px-4 py-4 text-right">
-                      {item.status === "PENDING" ? (
+                      {item.user_id === viewerId && !managesAllBranches ? (
+                        // SCRUM-63: a branch head may not decide their own đơn, so the buttons are
+                        // not offered at all (the owner, who may, keeps them).
+                        <span className="text-[11px] text-slate-400">Đơn của bạn</span>
+                      ) : !canReview(item) ? (
+                        <span className="text-[11px] text-slate-400">Chỉ xem</span>
+                      ) : item.status === "PENDING" ? (
                         <div className="inline-flex items-center gap-2">
                           <button
                             type="button"
@@ -532,6 +717,145 @@ export default function RequestsPage() {
           </table>
         </div>
       </section>
+
+      {submitOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
+                  <Send size={18} />
+                </span>
+                <div>
+                  <h2 className="font-bold text-slate-900">Gửi đơn mới</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Đơn được gửi tới quản lý chi nhánh để duyệt và giữ trạng thái
+                    &quot;Chờ duyệt&quot; cho tới khi được xử lý.
+                  </p>
+                </div>
+              </div>
+              <button type="button" aria-label="Đóng" onClick={closeSubmit}>
+                <X size={18} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-xs font-semibold text-slate-600">
+                  Loại đơn <span className="text-rose-500">*</span>
+                  <select
+                    value={form.requestType}
+                    onChange={(event) =>
+                      setForm((value) => ({
+                        ...value,
+                        requestType: event.target.value as RequestType,
+                      }))
+                    }
+                    className={inputClassName}
+                  >
+                    {REQUEST_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block text-xs font-semibold text-slate-600">
+                  Chi nhánh <span className="text-rose-500">*</span>
+                  {isManager ? (
+                    <select
+                      value={form.branchId}
+                      onChange={(event) =>
+                        setForm((value) => ({
+                          ...value,
+                          branchId: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                    >
+                      <option value="">Chọn chi nhánh</option>
+                      {branches.map((branch) => (
+                        <option key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    // SCRUM-63: an employee files for the branch they belong to, so this field is a
+                    // statement rather than a choice — the API refuses any other branch anyway.
+                    <span className="mt-1 block rounded-lg border border-slate-200 bg-app px-3 py-2 text-sm font-normal text-slate-600">
+                      {branchNames.get(ownBranchId ?? "") ?? "—"}
+                      <span className="mt-0.5 block text-[10px] text-slate-400">
+                        Đơn luôn thuộc chi nhánh bạn làm việc
+                      </span>
+                    </span>
+                  )}
+                </label>
+              </div>
+
+              {branches.length === 0 && (
+                <p className="text-[11px] text-amber-600">
+                  Chưa có chi nhánh nào để chọn. Vui lòng nhờ chủ sở hữu tạo chi nhánh
+                  trước khi gửi đơn.
+                </p>
+              )}
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Tiêu đề <span className="text-rose-500">*</span>
+                <input
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((value) => ({ ...value, title: event.target.value }))
+                  }
+                  maxLength={MAX_REQUEST_TITLE_LENGTH}
+                  placeholder="Xin nghỉ phép ngày 12/10"
+                  className={inputClassName}
+                />
+              </label>
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Nội dung chi tiết
+                <textarea
+                  value={form.content}
+                  onChange={(event) =>
+                    setForm((value) => ({ ...value, content: event.target.value }))
+                  }
+                  maxLength={MAX_REQUEST_CONTENT_LENGTH}
+                  rows={4}
+                  placeholder="Lý do, khoảng thời gian mong muốn, ca cần đổi..."
+                  className={`${inputClassName} resize-none`}
+                />
+              </label>
+
+              {formError && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                  {formError}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeSubmit}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitRequest()}
+                disabled={saving || !form.branchId || !form.title.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong disabled:opacity-50"
+              >
+                {saving && <Loader2 size={13} className="animate-spin" />}
+                {saving ? "Đang gửi..." : "Gửi đơn"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {rejectTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">

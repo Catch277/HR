@@ -6,15 +6,24 @@ import {
   ChevronRight,
   Loader2,
   MapPin,
+  MapPinned,
   Pencil,
   Plus,
   Radar,
   RefreshCw,
   Search,
+  Trash2,
   UserX,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import LocationPickerMap from "@/components/LocationPickerMap";
+import { useProfile } from "@/components/ProfileProvider";
+import { roleLabel } from "@/lib/accessPolicy";
+import { canManageBranch } from "@/lib/domain/branchScope";
+import { isBranchHeadRole } from "@/lib/domain/roles";
+import { isInsideVietnam } from "@/lib/geo/vietnam";
 
 type Branch = {
   id: string;
@@ -31,29 +40,44 @@ type Branch = {
 type BranchForm = {
   name: string;
   address: string;
+  managerId: string;
   latitude: string;
   longitude: string;
   attendanceRadius: string;
+};
+
+/**
+ * A row of the staff directory (`GET /api/users` without `id`, SCRUM-24). The endpoint is a manager
+ * view (SCRUM-59 `directory:view`), which is the PII decision recorded for this screen: a branch
+ * manager is chosen from it, and a role without the directory simply does not get the list.
+ */
+type StaffOption = {
+  id: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
 };
 
 type ModalState = { mode: "create" } | { mode: "edit"; branch: Branch } | null;
 
 type LoadResult = { branches: Branch[]; error: string | null };
 
-const EMPTY_FORM: BranchForm = {
-  name: "",
-  address: "",
-  latitude: "",
-  longitude: "",
-  attendanceRadius: "50",
-};
-
-const PAGE_SIZE = 8;
-
-// Mirrors MIN_ATTENDANCE_RADIUS / MAX_ATTENDANCE_RADIUS in
+// Mirrors MIN_ATTENDANCE_RADIUS / MAX_ATTENDANCE_RADIUS / DEFAULT_ATTENDANCE_RADIUS in
 // app/api/branches/_lib/branchRequest.ts.
 const MIN_RADIUS = 10;
 const MAX_RADIUS = 2000;
+const DEFAULT_RADIUS = 50;
+
+const PAGE_SIZE = 8;
+
+const EMPTY_FORM: BranchForm = {
+  name: "",
+  address: "",
+  managerId: "",
+  latitude: "",
+  longitude: "",
+  attendanceRadius: String(DEFAULT_RADIUS),
+};
 
 const radiusFormatter = new Intl.NumberFormat("vi-VN");
 
@@ -81,6 +105,7 @@ function toForm(branch: Branch): BranchForm {
   return {
     name: branch.name,
     address: branch.address ?? "",
+    managerId: branch.manager_id ?? "",
     latitude: branch.latitude === null ? "" : String(branch.latitude),
     longitude: branch.longitude === null ? "" : String(branch.longitude),
     attendanceRadius: String(branch.attendance_radius),
@@ -88,6 +113,10 @@ function toForm(branch: Branch): BranchForm {
 }
 
 export default function BranchesPage() {
+  // SCRUM-59/61: a manager may open this screen (`branch:view`) and edit the branch they head
+  // (`branch:update`); the owner manages every branch. The write controls follow that rule, so a row
+  // the caller does not manage reads "Chỉ xem" instead of offering a button whose call answers `403`.
+  const { profile, can } = useProfile();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -97,10 +126,31 @@ export default function BranchesPage() {
   const [form, setForm] = useState<BranchForm>(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
+
+  // The one rule from `lib/domain/branchScope.ts` the table reads per row (SCRUM-61).
+  const viewer = {
+    userId: profile?.id ?? null,
+    managesAllBranches: can("branch:manage"),
+  };
+  const canManage = (branch: Branch) => canManageBranch(branch, viewer);
 
   // Bumping the token re-runs the effect below; keeping the fetch inside the effect (instead
   // of a callback the effect calls) avoids setting state synchronously during render.
   const [reloadToken, setReloadToken] = useState(0);
+
+  // The manager picker — and the name in the table — needs the staff directory. A 403 is a normal
+  // outcome (only a role holding `directory:view` may read it), so it is remembered as "not allowed"
+  // instead of becoming a page error, and the screen keeps working with the Đã gán / Chưa gán badges.
+  const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [staffAllowed, setStaffAllowed] = useState(false);
+
+  // Reverse geocoding: which lookup is in flight, and what to tell the operator about the last one.
+  const [locatingAddress, setLocatingAddress] = useState(false);
+  const [addressNotice, setAddressNotice] = useState("");
+  const [addressError, setAddressError] = useState("");
+  const geocodeAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,10 +193,79 @@ export default function BranchesPage() {
     };
   }, [reloadToken]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/users", { cache: "no-store" })
+      .then(async (response): Promise<StaffOption[]> => {
+        if (!response.ok) {
+          // 403 for a role without the directory: no picker, no name in the table, no error.
+          return [];
+        }
+
+        return (await response.json()) as StaffOption[];
+      })
+      .then((directory) => {
+        if (cancelled) {
+          return;
+        }
+
+        setStaff(directory);
+        setStaffAllowed(directory.length > 0);
+        setStaffLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setStaff([]);
+        setStaffAllowed(false);
+        setStaffLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function refresh() {
     setLoading(true);
     setPageError("");
     setReloadToken((token) => token + 1);
+  }
+
+  const staffById = useMemo(
+    () => new Map(staff.map((member) => [member.id, member])),
+    [staff],
+  );
+
+  /**
+   * The accounts that may head a branch: `MANAGER` and nobody else (SCRUM-63). The organization's
+   * `OWNER` stands above every branch, so offering them here would pin one person to one chi nhánh; an
+   * `EMPLOYEE` never had a scope. The API refuses both (`BranchManagerRoleError`) while `staff` itself
+   * stays complete, so a legacy `manager_id` pointing at either of them still shows a name below.
+   */
+  const managerOptions = useMemo(
+    () => staff.filter((member) => isBranchHeadRole(member.role)),
+    [staff],
+  );
+
+  /**
+   * Whether a stored `manager_id` still names somebody who may head a branch. Answering that needs the
+   * directory, so an unavailable one answers `true`: the row keeps its badge instead of flagging every
+   * branch in the table.
+   */
+  function hasValidHead(branch: Branch): boolean {
+    if (!branch.manager_id) {
+      return false;
+    }
+
+    if (staffById.size === 0) {
+      return true;
+    }
+
+    return isBranchHeadRole(staffById.get(branch.manager_id)?.role);
   }
 
   const filtered = useMemo(() => {
@@ -171,7 +290,7 @@ export default function BranchesPage() {
   const rangeEnd = (currentPage - 1) * PAGE_SIZE + visibleBranches.length;
 
   const geofenceBranches = branches.filter(hasGeofence);
-  const unassignedCount = branches.filter((branch) => !branch.manager_id).length;
+  const unassignedCount = branches.filter((branch) => !hasValidHead(branch)).length;
   const averageRadius =
     geofenceBranches.length === 0
       ? 0
@@ -186,24 +305,130 @@ export default function BranchesPage() {
   const previewLatitude = form.latitude.trim() === "" ? null : Number(form.latitude);
   const previewLongitude =
     form.longitude.trim() === "" ? null : Number(form.longitude);
-  const previewDiameter =
-    Number.isFinite(previewRadius) && previewRadius > 0
-      ? Math.min(140, Math.max(26, 26 + (previewRadius / MAX_RADIUS) * 114))
-      : 26;
+  const previewRadiusMeters =
+    Number.isFinite(previewRadius) && previewRadius > 0 ? previewRadius : DEFAULT_RADIUS;
+
+  /**
+   * Fills the address field from a coordinate (`GET /api/geo/reverse`). Only one lookup runs at a
+   * time: a newer pick aborts the previous one, so the address always belongs to the newest pin.
+   */
+  async function lookupAddress(latitude: number, longitude: number) {
+    if (!isInsideVietnam(latitude, longitude)) {
+      setAddressNotice("");
+      setAddressError(
+        "Không tra cứu được địa chỉ: toạ độ nằm ngoài lãnh thổ Việt Nam.",
+      );
+      return;
+    }
+
+    geocodeAbortRef.current?.abort();
+    const controller = new AbortController();
+    geocodeAbortRef.current = controller;
+
+    setLocatingAddress(true);
+    setAddressNotice("");
+    setAddressError("");
+
+    try {
+      const response = await fetch(
+        `/api/geo/reverse?latitude=${latitude}&longitude=${longitude}`,
+        { cache: "no-store", signal: controller.signal },
+      );
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        setAddressError(
+          data?.error ?? "Không tra cứu được địa chỉ. Vui lòng nhập tay.",
+        );
+        return;
+      }
+
+      const data = (await response.json()) as { address: string | null };
+      const address = data.address;
+
+      if (!address) {
+        setAddressError(
+          "Không tìm thấy địa chỉ cho toạ độ này. Vui lòng nhập tay.",
+        );
+        return;
+      }
+
+      setForm((value) => ({ ...value, address }));
+      setAddressNotice("Đã điền địa chỉ theo toạ độ.");
+    } catch (error) {
+      // A lookup that was replaced by a newer one has nothing to report.
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      setAddressError(
+        "Không kết nối được dịch vụ tra cứu địa chỉ. Vui lòng nhập tay.",
+      );
+    } finally {
+      if (geocodeAbortRef.current === controller) {
+        geocodeAbortRef.current = null;
+        setLocatingAddress(false);
+      }
+    }
+  }
+
+  /** The same lookup, started from the button next to the address field. */
+  function lookupAddressFromForm() {
+    const latitude = form.latitude.trim() === "" ? null : Number(form.latitude);
+    const longitude =
+      form.longitude.trim() === "" ? null : Number(form.longitude);
+
+    if (
+      latitude === null ||
+      longitude === null ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      setAddressNotice("");
+      setAddressError("Cần nhập toạ độ hợp lệ trước khi tra cứu địa chỉ.");
+      return;
+    }
+
+    void lookupAddress(latitude, longitude);
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM);
     setFormError("");
+    setAddressNotice("");
+    setAddressError("");
     setModal({ mode: "create" });
   }
 
   function openEdit(branch: Branch) {
-    setForm(toForm(branch));
+    const storedHead = branch.manager_id;
+    // SCRUM-63: a head who may not head a branch (the owner, or a legacy employee) is not an option any
+    // more, so the field opens empty instead of holding a value the API would refuse on save. Only the
+    // owner may change `manager_id` at all, and an unavailable directory keeps the stored value, so a
+    // manager's modal never blanks a head it cannot see.
+    const clearInvalidHead =
+      can("branch:manage") && storedHead !== null && !hasValidHead(branch);
+
+    setForm({
+      ...toForm(branch),
+      managerId: clearInvalidHead ? "" : (storedHead ?? ""),
+    });
     setFormError("");
+    setAddressNotice("");
+    setAddressError("");
     setModal({ mode: "edit", branch });
   }
 
   function closeModal() {
+    // A lookup still running belongs to the form that is being closed.
+    geocodeAbortRef.current?.abort();
+    geocodeAbortRef.current = null;
+    setLocatingAddress(false);
+    setAddressNotice("");
+    setAddressError("");
     setModal(null);
     setFormError("");
   }
@@ -215,12 +440,19 @@ export default function BranchesPage() {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) =>
+      (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+
         setForm((value) => ({
           ...value,
-          latitude: position.coords.latitude.toFixed(6),
-          longitude: position.coords.longitude.toFixed(6),
-        })),
+          latitude: latitude.toFixed(6),
+          longitude: longitude.toFixed(6),
+        }));
+
+        // The device just told us where it is, so it may as well tell us the address too.
+        void lookupAddress(latitude, longitude);
+      },
       () => setFormError("Không lấy được vị trí hiện tại. Vui lòng nhập tay."),
     );
   }
@@ -254,6 +486,15 @@ export default function BranchesPage() {
       return;
     }
 
+    // The same outline test the API and the map picker use, so a hand-typed pair is refused before
+    // it becomes a request the server would answer with 400.
+    if (latitude !== null && longitude !== null && !isInsideVietnam(latitude, longitude)) {
+      setFormError(
+        "Toạ độ phải nằm trong lãnh thổ Việt Nam. Vui lòng chọn lại vị trí trên bản đồ.",
+      );
+      return;
+    }
+
     if (!Number.isInteger(radius) || radius < MIN_RADIUS || radius > MAX_RADIUS) {
       setFormError(
         `Bán kính chấm công phải là số nguyên từ ${MIN_RADIUS} đến ${MAX_RADIUS} mét.`,
@@ -274,6 +515,8 @@ export default function BranchesPage() {
           body: JSON.stringify({
             name: form.name.trim(),
             address: form.address.trim() || null,
+            // The API refuses a manager id it cannot resolve, so an empty selection is sent as null.
+            manager_id: form.managerId || null,
             latitude,
             longitude,
             attendance_radius: radius,
@@ -295,6 +538,41 @@ export default function BranchesPage() {
       setFormError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function remove(branch: Branch) {
+    const confirmed = window.confirm(
+      `Xoá chi nhánh "${branch.name}"?\n\nChỉ xoá được khi chi nhánh không còn bảng công, ca làm việc, thiết bị hay doanh thu nào — nếu còn, hệ thống sẽ liệt kê số lượng cần xử lý trước.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(branch.id);
+    setPageError("");
+
+    try {
+      const response = await fetch(`/api/branches/${branch.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        // The 409 sentence names the rows that still point at the branch, so the owner knows what to
+        // move or remove first (`branches_guard_delete` repeats that check in the database).
+        setPageError(data?.error ?? "Không thể xoá chi nhánh.");
+        return;
+      }
+
+      refresh();
+    } catch {
+      setPageError("Không thể kết nối tới máy chủ. Vui lòng thử lại.");
+    } finally {
+      setDeletingId("");
     }
   }
 
@@ -322,13 +600,15 @@ export default function BranchesPage() {
             <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
             Làm mới
           </button>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
-          >
-            <Plus size={14} /> Thêm chi nhánh
-          </button>
+          {can("branch:manage") && (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
+            >
+              <Plus size={14} /> Thêm chi nhánh
+            </button>
+          )}
         </div>
       </div>
 
@@ -430,13 +710,15 @@ export default function BranchesPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px] text-left text-xs">
+          <table className="w-full min-w-[1200px] text-left text-xs">
             <thead className="bg-surface-muted text-[9px] font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Chi nhánh</th>
                 <th className="px-4 py-3">Chi nhánh trưởng</th>
                 <th className="px-4 py-3">Toạ độ GPS</th>
-                <th className="px-4 py-3 text-right">Bán kính chấm công</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">
+                  Bán kính chấm công
+                </th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3 text-right">Thao tác</th>
               </tr>
@@ -468,65 +750,112 @@ export default function BranchesPage() {
               )}
 
               {!loading &&
-                visibleBranches.map((branch) => (
-                  <tr
-                    key={branch.id}
-                    className="border-t border-slate-100 transition-colors hover:bg-slate-50/70"
-                  >
-                    <td className="px-4 py-4">
-                      <div className="flex items-start gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
-                          <Building2 size={16} />
-                        </span>
-                        <div>
-                          <p className="font-semibold text-slate-900">
-                            {branch.name}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {branch.address ?? "Chưa cập nhật địa chỉ"}
-                          </p>
+                visibleBranches.map((branch) => {
+                  const manager = branch.manager_id
+                    ? (staffById.get(branch.manager_id) ?? null)
+                    : null;
+
+                  return (
+                    <tr
+                      key={branch.id}
+                      className="border-t border-slate-100 transition-colors hover:bg-slate-50/70"
+                    >
+                      <td className="px-4 py-4">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary">
+                            <Building2 size={16} />
+                          </span>
+                          <div>
+                            <p className="font-semibold text-slate-900">
+                              {branch.name}
+                            </p>
+                            <p className="mt-0.5 max-w-[20rem] break-words text-[11px] text-slate-500">
+                              {branch.address ?? "Chưa cập nhật địa chỉ"}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      {branch.manager_id ? (
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                          Đã gán
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                          Chưa gán
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 tabular-nums text-slate-600">
-                      {formatGps(branch.latitude, branch.longitude)}
-                    </td>
-                    <td className="px-4 py-4 text-right tabular-nums text-slate-700">
-                      {radiusFormatter.format(branch.attendance_radius)} m
-                    </td>
-                    <td className="px-4 py-4">
-                      {hasGeofence(branch) ? (
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                          Sẵn sàng chấm công
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                          Thiếu toạ độ
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(branch)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                      >
-                        <Pencil size={13} /> Chỉnh sửa
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-4">
+                        {manager ? (
+                          <span className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-slate-800">
+                              {manager.full_name}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {roleLabel(manager.role)}
+                            </span>
+                            {!hasValidHead(branch) && (
+                              // SCRUM-63: the owner stands above every branch, so an owner-headed row
+                              // is a branch nobody actually runs — the operator has to notice it.
+                              <span className="max-w-48 text-[10px] font-semibold text-amber-600">
+                                {roleLabel(manager.role)} không phụ trách chi nhánh — cần gán
+                                quản lý chi nhánh
+                              </span>
+                            )}
+                          </span>
+                        ) : branch.manager_id ? (
+                          // Without the directory the row shows the state, not the name.
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                            Đã gán
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                            Chưa gán
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 tabular-nums text-slate-600">
+                        {formatGps(branch.latitude, branch.longitude)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-right tabular-nums text-slate-700">
+                        {radiusFormatter.format(branch.attendance_radius)} m
+                      </td>
+                      <td className="px-4 py-4">
+                        {hasGeofence(branch) ? (
+                          <span className="whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                            Sẵn sàng chấm công
+                          </span>
+                        ) : (
+                          <span className="whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                            Thiếu toạ độ
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        {can("branch:update") && canManage(branch) ? (
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(branch)}
+                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                            >
+                              <Pencil size={13} /> Chỉnh sửa
+                            </button>
+                            {can("branch:manage") && (
+                              <button
+                                type="button"
+                                onClick={() => void remove(branch)}
+                                disabled={deletingId === branch.id}
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                              >
+                                {deletingId === branch.id ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={13} />
+                                )}
+                                Xoá
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] font-medium text-slate-400">
+                            Chỉ xem
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -615,8 +944,25 @@ export default function BranchesPage() {
                 />
               </label>
 
-              <label className="block text-xs font-semibold text-slate-600">
-                Địa chỉ đầy đủ
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-600">
+                    Địa chỉ đầy đủ
+                  </p>
+                  <button
+                    type="button"
+                    onClick={lookupAddressFromForm}
+                    disabled={locatingAddress}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary disabled:opacity-50"
+                  >
+                    {locatingAddress ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <MapPinned size={12} />
+                    )}
+                    {locatingAddress ? "Đang tra cứu..." : "Lấy địa chỉ từ toạ độ"}
+                  </button>
+                </div>
                 <input
                   value={form.address}
                   onChange={(event) =>
@@ -627,8 +973,64 @@ export default function BranchesPage() {
                   }
                   maxLength={300}
                   placeholder="128 Lê Lợi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh"
-                  className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
+                  className="w-full rounded-lg border border-slate-200 p-2.5 text-sm font-normal outline-none focus:border-blue-500"
                 />
+                {/* Reverse geocoding fills this field whenever the pin moves; a typed address stays editable. */}
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Chọn vị trí trên bản đồ hoặc “Lấy vị trí hiện tại” để hệ thống
+                  tự điền địa chỉ theo toạ độ.
+                </p>
+                {addressNotice && (
+                  <p className="mt-1 text-[11px] font-semibold text-emerald-600">
+                    {addressNotice}
+                  </p>
+                )}
+                {addressError && (
+                  <p className="mt-1 text-[11px] font-semibold text-rose-600">
+                    {addressError}
+                  </p>
+                )}
+              </div>
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Chi nhánh trưởng
+                <select
+                  value={form.managerId}
+                  onChange={(event) =>
+                    setForm((value) => ({
+                      ...value,
+                      managerId: event.target.value,
+                    }))
+                  }
+                  disabled={staffLoading || !staffAllowed || !can("branch:manage")}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-surface p-2.5 text-sm font-normal outline-none focus:border-blue-500 disabled:text-slate-400"
+                >
+                  <option value="">— Chưa gán —</option>
+                  {managerOptions.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name} — {roleLabel(member.role)}
+                      {member.is_active ? "" : " (đã nghỉ)"}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                  {!can("branch:manage")
+                    ? "Chỉ chủ sở hữu mới đổi được chi nhánh trưởng; bạn sửa được thông tin của chi nhánh mình phụ trách."
+                    : staffLoading
+                      ? "Đang tải danh sách nhân sự..."
+                      : staffAllowed
+                        ? "Người phụ trách chi nhánh — chỉ tài khoản quản lý chi nhánh; có thể để trống. Chủ sở hữu đứng trên mọi chi nhánh nên không phụ trách một chi nhánh cụ thể."
+                        : "Chỉ chủ sở hữu/quản lý mới xem được danh sách nhân sự để gán chi nhánh trưởng."}
+                </span>
+                {modal.mode === "edit" &&
+                  modal.branch.manager_id !== null &&
+                  !hasValidHead(modal.branch) && (
+                    <span className="mt-1 block text-[11px] font-normal text-amber-600">
+                      Chi nhánh trưởng hiện tại là chủ sở hữu hoặc một tài khoản không thể phụ
+                      trách chi nhánh, nên ô này đã được để trống — chọn một quản lý chi nhánh
+                      rồi lưu lại.
+                    </span>
+                  )}
               </label>
 
               <div>
@@ -736,28 +1138,23 @@ export default function BranchesPage() {
 
               <div>
                 <p className="mb-1 text-xs font-semibold text-slate-600">
-                  Mô phỏng vùng chấm công (Geo-Fence Preview)
+                  Vị trí chi nhánh và vùng chấm công
                 </p>
-                <div className="relative h-40 overflow-hidden rounded-lg border border-slate-200 bg-surface-muted">
-                  <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(to_right,#cbd5e1_1px,transparent_1px),linear-gradient(to_bottom,#cbd5e1_1px,transparent_1px)] [background-size:24px_24px]" />
-                  <div
-                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary/50 bg-primary/10"
-                    style={{ width: previewDiameter, height: previewDiameter }}
-                  />
-                  <span className="absolute left-1/2 top-1/2 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-surface text-primary shadow-sm">
-                    <MapPin size={16} />
-                  </span>
-                  <span className="absolute bottom-2 left-2 rounded-md bg-surface px-2 py-1 text-[10px] font-semibold tabular-nums text-slate-600 shadow-sm">
-                    {formatGps(previewLatitude, previewLongitude)}
-                  </span>
-                  <span className="absolute bottom-2 right-2 rounded-md bg-surface px-2 py-1 text-[10px] font-semibold text-primary shadow-sm">
-                    Bán kính R ={" "}
-                    {radiusFormatter.format(
-                      Number.isFinite(previewRadius) ? previewRadius : 0,
-                    )}
-                    m
-                  </span>
-                </div>
+                <LocationPickerMap
+                  latitude={previewLatitude}
+                  longitude={previewLongitude}
+                  radiusMeters={previewRadiusMeters}
+                  onPick={(pickedLatitude, pickedLongitude) => {
+                    setForm((value) => ({
+                      ...value,
+                      latitude: pickedLatitude.toFixed(6),
+                      longitude: pickedLongitude.toFixed(6),
+                    }));
+
+                    // The pin moved, so the address follows it.
+                    void lookupAddress(pickedLatitude, pickedLongitude);
+                  }}
+                />
               </div>
 
               {formError && (

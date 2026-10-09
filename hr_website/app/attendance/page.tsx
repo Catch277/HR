@@ -15,13 +15,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { useProfile } from "@/components/ProfileProvider";
+import { canManageBranch } from "@/lib/domain/branchScope";
 import {
   ATTENDANCE_STATUSES,
   type Attendance,
   type AttendanceStatus,
 } from "@/lib/domain/entities/Attendance";
 
-type Branch = { id: string; name: string };
+// SCRUM-61 needs `manager_id`: it is what says whether the caller heads the branch.
+type Branch = { id: string; name: string; manager_id: string | null };
 
 type LoadResult = {
   records: Attendance[];
@@ -211,8 +214,24 @@ function initials(fullName: string | undefined): string {
 }
 
 export default function AttendancePage() {
+  // SCRUM-59/61: every role may open the timesheet (`attendance:view`, narrowed to own rows by
+  // SCRUM-60), but Xác nhận / xử lý khiếu nại / sửa giờ are the reviewer's actions — and only for the
+  // branch they head. Raising a complaint stays available because the API also accepts the
+  // employee's own record.
+  const { profile, can } = useProfile();
+  const viewerId = profile?.id ?? null;
+  const managesAllBranches = can("branch:manage");
   const [records, setRecords] = useState<Attendance[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+
+  // SCRUM-61: the branches this caller may review (the owner all of them, a manager only their own).
+  const manageableIds = new Set(
+    branches
+      .filter((branch) =>
+        canManageBranch(branch, { userId: viewerId, managesAllBranches }),
+      )
+      .map((branch) => branch.id),
+  );
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [branchFilter, setBranchFilter] = useState(ALL);
@@ -361,7 +380,7 @@ export default function AttendancePage() {
     }
 
     if (status === 403) {
-      return "Tài khoản của bạn không có quyền thực hiện thao tác này (chỉ OWNER hoặc CHU).";
+      return "Tài khoản của bạn không có quyền thực hiện thao tác này (chỉ chủ sở hữu hoặc quản lý).";
     }
 
     if (status === 404) {
@@ -872,7 +891,9 @@ export default function AttendancePage() {
                       </td>
                       <td className="px-4 py-4 text-right">
                         <div className="inline-flex flex-wrap items-center justify-end gap-2">
-                          {!record.verified_at && (
+                          {can("attendance:review") &&
+                            manageableIds.has(record.branch_id) &&
+                            !record.verified_at && (
                             <button
                               type="button"
                               onClick={() => void verify(record)}
@@ -887,29 +908,34 @@ export default function AttendancePage() {
                               Xác nhận
                             </button>
                           )}
-                          {record.complaint_status === "OPEN" && (
+                          {can("attendance:review") &&
+                            manageableIds.has(record.branch_id) &&
+                            record.complaint_status === "OPEN" && (
+                              <button
+                                type="button"
+                                onClick={() => void resolveComplaint(record)}
+                                disabled={resolvingId === record.id}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                {resolvingId === record.id ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Check size={13} />
+                                )}
+                                Xử lý khiếu nại
+                              </button>
+                            )}
+                          {can("attendance:review") &&
+                            manageableIds.has(record.branch_id) && (
                             <button
                               type="button"
-                              onClick={() => void resolveComplaint(record)}
-                              disabled={resolvingId === record.id}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                              onClick={() => openCorrection(record)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                             >
-                              {resolvingId === record.id ? (
-                                <Loader2 size={13} className="animate-spin" />
-                              ) : (
-                                <Check size={13} />
-                              )}
-                              Xử lý khiếu nại
+                              <Pencil size={13} />
+                              Sửa giờ
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => openCorrection(record)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                          >
-                            <Pencil size={13} />
-                            Sửa giờ
-                          </button>
                           <button
                             type="button"
                             onClick={() => openComplaint(record)}

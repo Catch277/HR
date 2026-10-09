@@ -2,12 +2,12 @@ import type { StaffProvisionResult } from "@/lib/domain/entities/StaffProvisionR
 import { INVITE_ROLES } from "@/lib/domain/entities/OrganizationInvite";
 import { StaffProvisioningForbiddenError } from "@/lib/domain/errors/StaffProvisioningForbiddenError";
 import type { IStaffProvisioningService } from "@/lib/domain/repositories/IStaffProvisioningService";
+import { isOwnerRole } from "@/lib/domain/roles";
 import {
   emailValidationError,
   newPasswordValidationError,
 } from "@/lib/usecases/credentials";
 
-const MANAGER_ROLES = new Set(["OWNER", "CHU"]);
 const ROLE_SET: ReadonlySet<string> = new Set(INVITE_ROLES);
 const MAX_NAME_LENGTH = 120;
 
@@ -34,7 +34,7 @@ export class ProvisionStaffAccountUseCase {
   ) {}
 
   async execute(input: ProvisionStaffAccountInput): Promise<StaffProvisionResult> {
-    if (!MANAGER_ROLES.has(input.callerRole.trim().toUpperCase())) {
+    if (!isOwnerRole(input.callerRole)) {
       throw new StaffProvisioningForbiddenError();
     }
 
@@ -60,7 +60,7 @@ export class ProvisionStaffAccountUseCase {
       callerToken: input.callerToken,
       email,
       fullName,
-      role: input.role as "EMPLOYEE" | "CHU",
+      role: input.role as "EMPLOYEE" | "MANAGER",
       password: input.password,
     });
   }

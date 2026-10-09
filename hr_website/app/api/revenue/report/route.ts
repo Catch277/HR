@@ -3,7 +3,10 @@
  * /api/revenue/report:
  *   get:
  *     summary: Get an aggregated revenue report
- *     description: Reports closed-shift revenue (close_amount minus open_amount) in the Asia/Bangkok business timezone and compares it with the preceding equivalent period.
+ *     description: |-
+ *       Reports closed-shift revenue (close_amount minus open_amount) in the Asia/Bangkok business
+ *       timezone and compares it with the preceding equivalent period. SCRUM-59: the report aggregates
+ *       the organization's operation, so it needs `report:view` — `OWNER` or `MANAGER` only.
  *     tags:
  *       - Revenue
  *     parameters:
@@ -40,6 +43,8 @@
  *         description: One or more query parameters are invalid.
  *       401:
  *         description: Authentication is required.
+ *       403:
+ *         description: The caller has no user profile, or their role may not read the report (SCRUM-59).
  *       500:
  *         description: An unexpected server error occurred.
  */
@@ -47,8 +52,8 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import type { RevenueReportPeriod } from "@/lib/domain/entities/RevenueReport";
 import { SupabaseRevenueReportRepository } from "@/lib/infrastructure/repositories/SupabaseRevenueReportRepository";
-import { createSupabaseServerClient } from "@/lib/infrastructure/supabaseClient";
 import { GetRevenueReportUseCase } from "@/lib/usecases/GetRevenueReportUseCase";
+import { requireCapability } from "@/app/api/_lib/requireCaller";
 
 const REPORT_PERIODS = new Set<RevenueReportPeriod>([
   "day",
@@ -98,17 +103,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // The revenue report aggregates the whole organization, so it stays a manager view (SCRUM-59).
+    const caller = await requireCapability("report:view");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Authentication is required." },
-        { status: 401 },
-      );
+    if (!caller.ok) {
+      return caller.response;
     }
 
     const getRevenueReport = new GetRevenueReportUseCase(

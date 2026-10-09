@@ -1,4 +1,5 @@
 import Header from "@/components/Header";
+import ProfileProvider from "@/components/ProfileProvider";
 import Sidebar from "@/components/Sidebar";
 import type { Metadata } from "next";
 import { Be_Vietnam_Pro } from "next/font/google";
@@ -48,13 +49,15 @@ export default function RootLayout({
       <body
         className={`${beVietnamPro.variable} flex h-dvh overflow-hidden bg-app font-sans text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900`}
       >
-        <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header />
-          <main className="min-h-0 flex-1 overflow-y-auto bg-app p-4 md:p-6">
-            <div className="mx-auto w-full max-w-[1440px]">{children}</div>
-          </main>
-        </div>
+        <ProfileProvider>
+          <Sidebar />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <Header />
+            <main className="min-h-0 flex-1 overflow-y-auto bg-app p-4 md:p-6">
+              <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+            </main>
+          </div>
+        </ProfileProvider>
       </body>
     </html>
   );

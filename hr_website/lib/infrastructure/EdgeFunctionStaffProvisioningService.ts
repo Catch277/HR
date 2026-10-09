@@ -58,7 +58,12 @@ function throwForStatus(status: number, message: string): never {
   }
 
   if (status === 409) {
-    throw new StaffAccountEmailTakenError();
+    // `409` means two different conflicts — the address is already a member, or it merely has its own
+    // Supabase Auth login — and the owner's next step is different in each, so the function's own
+    // sentence is forwarded instead of being collapsed into one wording (see the domain error, which
+    // also documents the marker the screen matches on). An older deployment that words both cases
+    // differently still reaches the screen as "already in use", never as a wrong claim.
+    throw new StaffAccountEmailTakenError(message);
   }
 
   if (status === 429) {
@@ -131,7 +136,7 @@ export class EdgeFunctionStaffProvisioningService
     }
 
     if (response.status === 403) {
-      // Deployed and reachable — the caller simply is not OWNER/CHU of an organization.
+      // Deployed and reachable — the caller simply is not the organization's OWNER (SCRUM-59).
       return { available: false, reason: "not_allowed", detail };
     }
 
